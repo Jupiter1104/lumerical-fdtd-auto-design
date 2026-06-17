@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment
+.env
+.env.*
+
+# Lumerical FDTD outputs (large binary, generated)
+*.fsp
+*.mat
+*.fig
+
+# Sweep outputs
+results/
+figures/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MCP runtime
+.claude/

@@ -1,0 +1,200 @@
+# 开发日志
+
+这个文件用于按日期记录项目开发过程。
+
+## 条目格式
+
+```md
+## YYYY-MM-DD - 简短标题
+
+- 目标：
+- 修改：
+- 验证：
+- 后续：
+```
+
+## 2026-06-17 - 项目初始化
+
+- 目标：从工作台模板创建 Lumerical FDTD 自动化开发项目。
+- 修改：创建项目文件夹，填充全部 8 个核心文档，在 WORKSPACE.md 中登记。
+- 验证：目录结构完整，文档交叉一致。
+- 后续：对齐真实环境，确定架构。
+
+## 2026-06-17 - 架构确定：Mac → SSH → Windows（已废弃）
+
+- 目标：根据真实运行环境确定系统架构。
+- 背景：Lumerical 在 Windows 11 上，单机 License，SSH/Python/lumapi 全栈就绪。
+- 架构决定：采用 SSH + 远程脚本执行方案。
+- 备注：此方案基于 headless 假定，已被下一版本架构取代。
+
+## 2026-06-17 - 架构修正：Mac → HTTP RPC → Windows（GUI 可见）
+
+- 目标：用户澄清核心需求——**Mac Agent 控制 FDTD，Windows 上实时看到 GUI**。
+- 关键变化：headless → GUI 可见，SSH 短命脚本 → 持久 RPC Server，Mac 通过 HTTP 下发指令。
+- 修改：重写 TECH_STACK、REQUIREMENTS、AGENTS。
+- 后续：编写 rpc_server.py、smoke_test.py。
+
+## 2026-06-18 - 外部经验注入：微信文章《Vibe Coding 驱动仿真软件》
+
+- 目标：从社区已验证的 Lumerical 自动化实践中提取可复用经验。
+- 来源：微信公众号文章（作者已验证 Lumerical FDTD/EME/FDE/INTERCONNECT + HFSS + CST 的全自动建模与优化）。
+- 关键收获：
+  1. **Python 路径**：必须使用 Lumerical 自带的嵌入式 Python（如 2025 R1 的 `C:\Program Files\ANSYS Inc\v251\Lumerical\python-3.9.9-embed-amd64\python.exe`），系统 Python 无法导入 lumapi。
+  2. **常见陷阱**：`save()` 弹窗阻塞流程、监视器与波导重叠导致功率偏高。
+  3. **Prompt 模式**：量化验收条件 + 固定文件名 + 自主迭代闭环 + 明确交付物（.fsp + 仿真报告）。
+  4. **适用广度**：同方法适用于 Lumerical EME、FDE、INTERCONNECT 以及 Ansys HFSS、CST 等其他仿真软件。
+  5. **自主迭代**：Agent 的完整闭环 = 写代码 → 跑仿真 → 读结果 → 发现问题 → 改代码 → 重新跑，人工只需定义问题和验收标准。
+- 修改：
+  - 更新 `TECH_STACK.md`：新增 Lumerical 自带 Python 路径说明。
+  - 更新 `AGENTS.md`：新增"自动化仿真原则"和"已知 Agent 易犯错误"章节。
+  - 填充 `PITFALLS.md`：新增 3 条已知陷阱及修复方案。
+  - 更新全局 `REUSE_LOG.md`：沉淀 Vibe Coding 驱动仿真软件的通用模式。
+- 验证：文档交叉一致性检查通过（TECH_STACK 的 Python 路径与 PITFALLS、AGENTS 一致）。
+- 后续：
+  - 在 rpc_server.py 中实现防御性处理（自动覆盖保存、监视器位置校验）。
+  - 设计 MCP 工具 schema 时融入这些经验（每个工具自带验收提示）。
+  - 剩余参考资料（COMSOL MCP、Lumerical 官方 API）仍需学习。
+
+## 2026-06-18 - 外部经验注入：光子芯语《AI Agent 在光子学仿真中的边界》
+
+- 目标：从行业综述角度理解 AI Agent + 光子学仿真的能力边界和风险。
+- 来源：微信公众号「光子芯语」。
+- 关键收获：
+  1. **最大风险——无报错但物理错误**：网格/边界条件设置不当，仿真正常完成但结果在物理上是错的。Agent 会把错误结果当真并基于此继续优化。这是最危险的失败模式。
+  2. **多物理场是增量点不是短板**：作者修正了之前"多物理场需要人工介入"的观点——不同求解器 API/数据格式各异，写胶水代码正是 Agent 的强项。本项目应预留跨求解器编排能力。
+  3. **人-AI 协作模式**：人判物理、AI 执行。Agent 负责全自动执行和 API 编排，人负责定义问题、审核物理合理性。
+  4. **版本迁移风险**：Lumerical 归属从 ANSYS（2025 R1 及之前）变为 Synopsys（2026 R1 起），API 路径可能变化。RPC Server 需要版本检测和适配层。
+  5. **工具生态**：Claude Code / Codex / Cursor / Trae / Kimi Code 等均可用于此模式，核心逻辑相同。
+- 修改：
+  - `PITFALLS.md`：新增"无报错物理错误"和"版本迁移"两条陷阱。
+  - `AGENTS.md`：新增"人判物理 AI 执行"核心工作模式；非目标中增加多物理场扩展预留和版本适配要求；自动化仿真原则更新为来自社区实践。
+  - `REQUIREMENTS.md`：范围新增"物理合理性自动检查"和"跨求解器编排预留"；已确认新增远程桌面和版本迁移信息。
+- 验证：文档交叉一致性检查通过。
+- 后续：
+  - 设计 RPC Server 的 `get_lumerical_path()` 版本检测逻辑。
+  - 设计 MCP 工具的物理合理性检查 schema（总透过率 ≤ 1、互易性、跳变标记）。
+  - 用户确认 Lumerical 具体版本号。
+  - 用户发来 COMSOL MCP 和 Lumerical 官方 API 参考资料。
+
+## 2026-06-18 - 参考架构分析：COMSOL Multiphysics MCP Server
+
+- 目标：从成熟的仿真软件 MCP 实现中提取可直接复用的架构模式。
+- 来源：[github.com/wjc9011/COMSOL_Multiphysics_MCP](https://github.com/wjc9011/COMSOL_Multiphysics_MCP)（MIT 协议，80+ MCP 工具，已生产验证）。
+- 关键架构发现：
+  1. **FastMCP 框架**：使用 `mcp.server.fastmcp.FastMCP`，`@mcp.tool()` 装饰器注册工具。与我们将采用的 MCP 框架一致。
+  2. **Singleton SessionManager**：单例模式管理 `mph.Client` 连接和多模型追踪。我们映射为 RPC Client 单例（管理到 Windows 的 HTTP 连接）。
+  3. **工具分层注册**：`register_session_tools(mcp)` → `register_model_tools(mcp)` → ... → `register_results_tools(mcp)`，每层独立文件。我们直接复用这个模式。
+  4. **统一返回格式**：`{"success": True/False, ...}`，所有工具一致。已纳入我们的 RPC API 设计。
+  5. **领域知识嵌入**：`knowledge/embedded.py` 包含 TOPIC_GUIDES（物理场快速指南）、TROUBLESHOOTING（5 类常见错误的因果和修复）、BEST_PRACTICES（5 个建模类别的最佳实践），全部暴露为 MCP 工具。我们映射为光子学器件模板 + Lumerical 常见陷阱。
+  6. **Knowledge Prompts**：`knowledge/prompts/*.md` 存储 API 参考、物理指南、工作流教程，通过 `docs_get()` 工具暴露。我们映射为 Lumerical API 参考 + 器件设计模板 + 仿真工作流指南。
+  7. **Async Solver**：`async_handler/solver.py` 用线程实现异步求解 + 进度追踪 + 取消。长 FDTD 仿真直接复用此模式。
+  8. **工具命名规范**：`{domain}_{action}`（如 `geometry_add_block`、`study_solve`、`results_evaluate`）。我们的命名：`fdtd_session_start`、`fdtd_add_rect`、`fdtd_run`、`fdtd_get_result`。
+  9. **版本控制**：`model_save_version()` 带时间戳保存 + `_latest` 副本。FDTD `.fsp` 文件同样需要。
+  10. **Dual Interface**：所有工具函数先写成纯函数（可脱离 MCP 测试），再用 `@mcp.tool()` 包装。保证可测试性。
+- 架构差异分析：
+  | 维度 | COMSOL MCP | 本项目 |
+  |------|-----------|--------|
+  | 仿真软件位置 | 与 MCP Server 同机 | **跨机器**（Windows 远程） |
+  | API 调用方式 | 直接 mph Python API | **HTTP RPC 转发** |
+  | 会话管理 | mph.Client 单例 | RPC Client 单例 → Windows Flask |
+  | GUI 可见性 | 未提及 | **核心需求**（GUI 不 hide） |
+  | 知识库 | PDF 向量检索（chromadb） | 光子学设计规则 + Lumerical 陷阱 |
+- 修改：
+  - 重写 `TECH_STACK.md`：三层架构图（MCP→RPC→仿真），新增 Mac 端 MCP 模块设计树，工具命名规范。
+- 验证：架构设计完整覆盖 COMSOL MCP 的 10 个最佳实践，并适配本项目的跨机器特点。
+- 后续：
+  - 编写 `src/server.py`（FastMCP 入口）。
+  - 编写 `src/rpc_client/client.py`（Windows RPC HTTP 封装）。
+  - 编写 `rpc_server.py`（Windows 端 Flask 服务）。
+  - 用户发来 Lumerical 官方 API 链接。
+
+## 2026-06-18 - 参考架构分析：Ansys Optical Automation 官方库
+
+- 目标：学习 Ansys 官方的光学仿真自动化库设计模式。
+- 来源：[github.com/ansys/optical-automation](https://github.com/ansys/optical-automation)（MIT 协议，官方维护，覆盖 Speos/Zemax/Lumerical）。
+- 关键发现：
+  1. **Windows Registry 检测 Lumerical 路径**：`lumerical_core/utils.py` 中 `get_lumerical_install_location(version)` 通过 `winreg` 读取 `HKEY_LOCAL_MACHINE\Software\ANSYS, Inc.\Lumerical v{version}` 注册表键获取安装路径。**比硬编码路径更健壮**，应纳入 RPC Server。
+  2. **多工具互操作**：`interop_process/` 包含 BSDF、rayfile、coating 等数据格式在 Speos/Zemax/Lumerical 之间的转换器。验证了"跨求解器编排"的可行性。
+  3. **应用示例结构**：`application/` 下每个脚本是独立的功能模块（`Setup Radiance Sensors.py`、`BSDF_converter_example.py`），命名直观。我们 `scripts/` 目录可借鉴此模式。
+  4. **Lumerical 模块很薄**：官方库中 Lumerical 只有 `utils.py`（路径检测），主要自动化在 Speos。说明 Lumerical 的 Python API 自动化仍在社区驱动阶段，我们的项目有先发价值。
+- 修改：
+  - `PITFALLS.md`：更新 Python 路径检测方案，从硬编码改为注册表查询 + 硬编码回退。
+  - `TECH_STACK.md`：Windows 端新增 Lumerical 路径自动检测逻辑说明。
+- 后续：将 `get_lumerical_install_location()` 模式实现到 `rpc_server.py` 启动逻辑中。
+
+## 2026-06-18 - 首版代码实现
+
+- 目标：基于全部参考资料，实现最小可跑版本（MVP）。
+- 修改：
+  - **`rpc_server.py`**（Windows 端，300+ 行）：Flask RPC Server，包含 SessionManager 单例、12 个 API 端点（health/status/session start/stop/file save/load/eval/getv/setv/run/getresult/getelectric/geom addfdtd/addrect/addcircle）。使用 PyLumerical 自动发现，支持系统 Python。
+  - **`src/rpc_client/client.py`**（Mac 端，150+ 行）：RpcClient HTTP 封装，统一返回格式 `{"success": bool, ...}`，14 个方法。
+  - **`src/server.py`**（Mac 端，50+ 行）：FastMCP 入口，注册 6 个工具模块 + 知识库模块。
+  - **`src/tools/session.py`**（6 个工具）：fdtd_session_start/stop/status/eval/getv/setv。
+  - **`src/tools/model.py`**（2 个工具）：fdtd_save/load。
+  - **`src/tools/geometry.py`**（3 个工具）：fdtd_add_fdtd_region/add_rect/add_circle。
+  - **`src/tools/simulation.py`**（3 个工具）：fdtd_run/get_result/get_electric。
+  - **`src/tools/analysis.py`**（2 个工具）：fdtd_sweep（参数扫描）、fdtd_physical_check（物理合理性检查）。
+  - **`src/tools/export_.py`**（2 个工具）：fdtd_export_gds/export_data。
+  - **`src/knowledge/embedded.py`**（200+ 行）：光子学领域知识 — 4 组器件模板（MMI/waveguide/grating/ring）、5 类故障排除、5 类最佳实践。4 个 MCP 工具。
+  - **`src/knowledge/prompts/lumerical_api.md`**：Lumerical FDTD Python API 快速参考。
+  - **`src/knowledge/prompts/workflow.md`**：FDTD 仿真工作流指南（含 SOI waveguide 和 MMI 1x2 专项指导）。
+  - **`scripts/smoke_test.py`**（6 项测试）：健康检查→启动会话→eval 命令→状态→简单仿真→停止。
+  - **`SOP.md`**：重写为 6 条 SOP（Windows 搭建/Mac 搭建/启动 RPC/端到端验证/新建脚本/交付）。
+- 总计：18 个 MCP 工具 + 4 个知识库工具 = **22 个工具**，覆盖完整仿真流程。
+- 验证：代码结构完整，待 Windows 环境实测。
+- 后续：
+  - 在 Windows 上测试 `rpc_server.py`。
+  - Mac 端运行 `scripts/smoke_test.py`。
+  - 编写第一个真实器件脚本（如 waveguide mode sweep）。
+  - 编写 MCP 配置文件（`.mcp.json` / `opencode.json`）。
+
+## 2026-06-18 - 首版代码与跨平台联调实战
+
+- 目标：与 Windows 端实际 RPC Server 联调，验证 Mac→Windows FDTD 控制链路。
+- 实际 Windows 环境：
+  - **Lumerical v242**，使用自带 Python `F:\Program Files\Lumerical\v242\python\python.exe`（非 PyLumerical）
+  - **MATLAB R2024b Engine** 用于 Phase 4 后处理
+  - **RPC Server** 是 metasurface 超表面扫参流水线（4 阶段：生成 .fsp → 并行求解 → S 参数提取 → MATLAB 热力图）
+  - **FDTD 生产模式 headless**（`hide=True`），因批量 load 在 GUI 模式下内存碎片化
+- 通信链路：Mac → SSH Tunnel (L 5002→localhost:5002) → Windows RPC Server
+- 联调中发现并修复的 bug（用户侧）：
+  1. **Sweep 卡死**：`fdtd.load()` 在脏会话中阻塞。修复：Phase 1 循环内加 `fdtd.clearjobs()`。
+  2. **0 valid / 4 missing**：headless GPU 求解器需要 express mode，但 `load(template)` 覆盖了模板外的 `setnamed`。修复：把 `setnamed("FDTD", "express mode", 1)` 移到循环内，每次 load 后重新设置。
+- 端到端测试结果：**4/4 有效，0 缺失，Phase 3 耗时 1.4s** ✅
+  6/7 项 smoke test 通过（Session close 超时属已知锁争用，不影响功能）
+- Mac 端代码对齐：
+  - `src/rpc_client/client.py`：重写为实际 API（`ok` 格式、sweep 端点）
+  - `src/tools/session.py`：`fdtd_health/session_start/session_close`
+  - `src/tools/simulation.py`：`fdtd_sweep_config_get/set`、`fdtd_sweep_run/status/monitor`
+  - `src/tools/analysis.py`：`fdtd_results_list/download`
+  - `scripts/smoke_test.py`：匹配实际 API，自动跳过已建 session
+- 后续：
+  - Windows 恢复后用端口 5001（当前用 5002 绕过幽灵进程）
+  - Session close 锁争用修复
+  - MCP Server 对接 Claude Code / Hermes
+
+## 2026-06-18 - 技术栈升级：采用官方 PyLumerical（ansys-lumerical-core）
+
+- 目标：将 Windows 端从"嵌入式 Python + 原始 lumapi"升级为官方 PyLumerical。
+- 来源：[github.com/ansys/pylumerical](https://github.com/ansys/pylumerical)（Ansys 官方，MIT 协议，PyPI 发布）。
+- 关键发现：
+  1. **`ansys-lumerical-core` 是官方 Python 封装**：`pip install ansys-lumerical-core` → `import ansys.lumerical.core as lumapi`。PyPI 上直接安装，不需要嵌入式 Python。
+  2. **自动发现链**：`LUMERICAL_HOME` env var → Windows Registry (`SOFTWARE\ANSYS, Inc.\Lumerical`) → 文件系统搜索（`C:\Program Files\Lumerical\`、`C:\Program Files\Ansys Inc\Lumerical`）→ `/opt/lumerical/`（Linux）。版本自动匹配最新。
+  3. **上下文管理器**：`with lumapi.FDTD(hide=False) as fdtd:` — 自动清理会话，原生支持 GUI 可见/隐藏。
+  4. **Pythonic API**：`fdtd.addfdtd(x=0, x_span=8e-6, ...)`、`fdtd.addgaussian(properties=OrderedDict(...))`、`fdtd.run()`、`fdtd.getelectric("monitor")`。
+  5. **多求解器支持**：FDTD、MODE、DEVICE、INTERCONNECT 全部可用。
+  6. **内置 lumopt2**：逆向设计优化包直接内置。
+  7. **依赖**：`numpy>=1.26`、`scipy>=1.10`、`matplotlib>=3.10`、`autograd>=1.6`。
+- **对项目的根本影响**：
+  - Windows RPC Server 不再需要嵌入式 Python → 系统 Python + `pip install ansys-lumerical-core` 即可。
+  - 路径管理从"硬编码 + 注册表拼接"简化为"自动发现 + `LUMERICAL_HOME` 回退"。
+  - RPC Server 的 `lumapi` 会话管理可复用 PyLumerical 的 context manager 模式。
+  - API 风格从原始 `lumapi.eval()` 升级为 Pythonic 方法调用。
+- 修改：
+  - `TECH_STACK.md`：架构图、Windows 端技术栈、命令、环境变量全面更新。
+  - `PITFALLS.md`：Python 路径问题的根因和修复从"嵌入式 Python"改写为"使用 PyLumerical"，标注为已解决。
+- 验证：PyLumerical 是 PyPI 发布的官方包，与所有 Lumerical 2022 R1+ 兼容。
+- 后续：
+  - Windows 端 `pip install ansys-lumerical-core`。
+  - 基于 PyLumerical 的 context manager 模式编写 `rpc_server.py` 会话管理。
+  - 全部参考资料学习完毕，准备编码。
