@@ -198,3 +198,43 @@
   - Windows 端 `pip install ansys-lumerical-core`。
   - 基于 PyLumerical 的 context manager 模式编写 `rpc_server.py` 会话管理。
   - 全部参考资料学习完毕，准备编码。
+
+## 2026-06-18 - 项目版控 + 知识库扩充 + 终极目标差距分析 + Step 1 启动
+
+- 目标：
+  1. Git 初始化，做好版本管理。
+  2. 学习新增的三份 Lumerical 参考文档。
+  3. 评估"Mac 发号施令→自主建模→自主仿真→扫参→MCP 可移植"的完整度差距。
+  4. 开始执行补全计划 Step 1（Windows RPC Server 加通用 lumapi 端点）。
+- 修改：
+  - **Git init**：`git init` + `.gitignore`，2 次提交：
+    1. `2e73ce6` 初始提交（26 文件，2582 行）
+    2. `8abc719` 知识库新增（3 文件，1742 行）
+  - **知识库扩充**（用户新增 3 个参考文档）：
+    - `lumerical_command_index.md`（26KB）：完整 Script/Python API 命令索引，含使用/禁用场景、常见坑、官方 URL。
+    - `lumerical_fdtd_automation_manual.md`（32KB）：AI Agent 控制 FDTD 工程手册，7 层架构图、对象速查、Agent 操作规范、失败分类、错误排查。
+    - `source_map.md`（20KB）：官方文档资料地图，按优先级（P0/P1/P2）整理的 URL 索引。
+  - **差距分析**：写定了 5 步补全计划 → `plans/distributed-inventing-pixel.md`。
+    - 完成度：Mac 发号施令 80% | 自主建模 0% | 自主仿真+扫参 90% | MCP 可移植 40%
+  - **Step 1 实施（Windows RPC Server 补丁）**：
+    - 从 Windows 拉取实际 `rpc_server.py`（415 行，全局变量模式）。
+    - 编写补丁脚本 `patch_rpc.py`，参考仓库内 `rpc_server.py` 的 11 个通用端点设计，转换为 `ok` 格式。
+    - 通过 SSH stdin 方式执行补丁（避开此前 heredoc 引号地狱）：**补丁成功**！
+    - Windows 文件状态：`rpc_server.py` 636 行（+221 行），语法检查通过，`.bak` 备份已生成。
+    - **重启受阻**：Windows SSH 会话不支持 `start /MIN`（无桌面 console），多次尝试后旧进程未杀干净，端口 5003 被多进程抢占。
+  - **更新 `DEV_LOG.md`**：追加本次开发记录。
+  - **TECH_STACK.md**：RPC API 端点表已由上次 neat-freak 更新，无需额外修改。
+- 关键教训（来自重启失败）：
+  1. **SSH + `start /MIN` 不可靠**：Windows OpenSSH 服务以非交互会话运行，`start` 命令需要桌面 session。
+  2. **进程残留**：`taskkill /F` 杀掉的 Python 进程可能被父进程或 Job Manager 自动重启。
+  3. **技术路线反思**：RPC 架构本身没问题（持久会话是必需），但**部署更新方式**需要改进——建议改为 git pull + 本地 .bat 重启，而非 Mac SSH 远程折腾。
+- 验证：
+  - Git log：2 次提交，无未追踪文件（除 `Dephasing.svg`）。
+  - Windows 端 `rpc_server.py`：`/eval` 和 `_rpc_eval` 字符串确认存在，636 行，语法 OK。
+  - 健康检查仍返回旧数据（旧进程抢占端口）。
+- 后续（下次继续）：
+  - **最高优先**：在 Windows 本地用 `.bat` 重启 RPC Server（非 SSH remote）。
+  - 验证 11 个新端点（curl 逐个测试）。
+  - Step 2：Mac RPC Client 补方法。
+  - Step 3：MCP Server 接线 geometry/model/export。
+  - Step 4：创建 `.mcp.json`。
