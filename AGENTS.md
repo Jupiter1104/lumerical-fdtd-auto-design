@@ -26,6 +26,7 @@
 - **License 硬约束**：软件只能在 Windows 上运行（v242，单机 domain=0）。
 - **可复现性**：仿真结果必须可由脚本完整复现。
 - **平台隔离**：RPC Server 代码只跑在 Windows 上，MCP Server 和控制脚本只跑在 Mac 上。
+- **Windows 代码更新**：Windows 端 `rpc_server.py` 通过 git pull + 本地 `.bat` 重启来更新，**不要通过 Mac SSH 远程修改和重启**（SSH 非交互会话不支持 `start /MIN`，易导致多进程抢占端口）。详见 PITFALLS.md 2026-06-18 条目。
 - **非目标**：不做 RPC Server 公网暴露/强安全认证；不做多机集群调度。
 - **语言**：代码注释和变量名使用英文；文档正文使用中文。
 - **交付前检查**：每个脚本必须含最小可运行示例，在 `DEV_LOG.md` 中记录运行结果。

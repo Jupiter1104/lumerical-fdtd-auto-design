@@ -73,3 +73,17 @@
 - 根因：`fdtd.setnamed("FDTD", "express mode", 1)` 设在循环外面，但每次 `fdtd.load(template)` 会重新加载模板文件，模板里保存的 FDTD 设置会覆盖之前 setnamed 的值。
 - 修复：把 `setnamed("FDTD", "express mode", 1)` 移到循环内，`switchtolayout()` 之后、`save()` 之前。这样每个 .fsp 文件都会正确启用 express mode。
 - 预防：**模板 load 后必须重新设置运行时参数**。模板文件保存的是设计基准，不保存运行时优化参数。在 SOP 中写入此规则。
+
+## 2026-06-18 - SSH 远程部署 RPC Server 代码不可靠（来源：联调实测）
+
+- 现象：Mac 端通过 SSH 修改 Windows `rpc_server.py` 后，无法可靠重启服务。
+- 根因：
+  1. Windows OpenSSH 服务以非交互会话运行，`start /MIN` 命令需要桌面 session 才能创建窗口/进程。
+  2. `taskkill /F` 杀掉的 Python 进程可能被父进程或系统自动重启。
+  3. 多次启动失败后同一端口（5003）被多个僵尸进程抢占，新进程无法监听。
+  4. SSH heredoc/引号嵌套在 Windows bash 环境下极容易出错。
+- 修复（建议方案，待下次验证）：Windows 端配好 git，通过 `git pull` 拉取最新代码 + 本地 `.bat` 脚本重启 RPC Server，而非 Mac SSH 远程推送。
+- 预防：
+  - **Windows RPC Server 代码更新统一走 git pull + 本地 .bat 重启**，避免 SSH 远程折腾。
+  - Mac 端只通过 curl 验证端点，不通过 SSH 修改 Windows 文件。
+  - 在 `SOP.md` 中新增"更新 RPC Server 代码"流程。

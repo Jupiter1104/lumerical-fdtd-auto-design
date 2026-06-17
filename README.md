@@ -8,12 +8,12 @@
 
 ## 当前状态
 
-- 阶段：MVP 验证完成
-- 最近更新：2026-06-18 — Mac↔Windows 跨平台联调通过，4/4 扫参有效，SSH 隧道+RPC 链路跑通
+- 阶段：MVP 验证完成，通用建模能力补全中
+- 最近更新：2026-06-18 — Git 初始化，知识库扩充（3 份 Lumerical 参考文档），Windows RPC Server 通用端点补丁已应用（待重启验证）
 - 主要下一步：
-  - RPC Server 加通用 lumapi 端点（`/eval`, `/geom/*`），支持自然语言建模
-  - MCP Server 接入 Claude Code
-  - 扩展至更多器件类型（MMI、波导模式等）
+  - **阻塞**：Windows 本地重启 RPC Server（补丁已写入，需 `.bat` 方式重启）
+  - 验证 11 个新端点 → Mac RPC Client 补方法 → MCP Server 接线
+  - MCP Server 接入 Claude Code（创建 `.mcp.json`）
 
 ## 核心文档
 
