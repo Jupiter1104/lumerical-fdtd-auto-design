@@ -66,6 +66,67 @@ class JobStore:
         job_id = self._new_job_id(normalized["job_type"])
         return self._create_job(job_id, normalized, state="planned")
 
+    def start(
+        self,
+        request: dict,
+        executor: Optional[Callable[[dict, Path], dict]] = None,
+    ) -> dict:
+        normalized = self._normalize_request(request)
+        if normalized["mode"] == "real":
+            approval = normalized["approval"]
+            if (
+                approval.get("approved") is not True
+                or approval.get("approved_for") != "real_run"
+            ):
+                raise JobError(
+                    "approval_required",
+                    "Real jobs require explicit approval.",
+                    403,
+                )
+
+        existing = self._find_idempotent_job(normalized)
+        if existing:
+            return existing
+
+        job_id = self._new_job_id(normalized["job_type"])
+        self._create_job(job_id, normalized, state="queued")
+        self._remember_idempotency(normalized, job_id)
+        self._run_job(job_id, executor)
+        return self.get(job_id)
+
+    def get(self, job_id: str) -> dict:
+        job_dir = self._job_dir(job_id)
+        manifest = self._read_json(job_dir / "manifest.json")
+        status = self._read_json(job_dir / "status.json")
+        summary = self._read_json(job_dir / "summary.json")
+        return {
+            "job_id": job_id,
+            "state": status["state"],
+            "task_count": summary["task_counts"]["total"],
+            "job_dir": manifest["paths"]["job_dir"],
+            "manifest": manifest,
+            "status": status,
+            "summary": summary,
+        }
+
+    def list_tasks(self, job_id: str) -> dict:
+        return {"job_id": job_id, "tasks": self._tasks(job_id)}
+
+    def resume(
+        self,
+        job_id: str,
+        executor: Optional[Callable[[dict, Path], dict]] = None,
+    ) -> dict:
+        tasks = self._tasks(job_id)
+        selected = [
+            task["task_id"]
+            for task in tasks
+            if task["state"] in {"pending", "failed"}
+        ]
+        if executor is not None and selected:
+            self._run_job(job_id, executor, only_task_ids=set(selected))
+        return {"job_id": job_id, "task_ids": selected}
+
     def _normalize_request(self, request: dict) -> dict:
         if not isinstance(request, dict):
             raise JobError("validation_error", "JSON body must be an object.", 400)
@@ -248,3 +309,101 @@ class JobStore:
         }
         self._write_json(self._job_dir(job_id) / "summary.json", summary)
         return summary
+
+    def _run_job(
+        self,
+        job_id: str,
+        executor: Optional[Callable[[dict, Path], dict]] = None,
+        only_task_ids: Optional[Set[str]] = None,
+    ) -> None:
+        self._write_status(job_id, "running", "Job running.")
+        selected_tasks = []
+        for task in self._tasks(job_id):
+            if only_task_ids is None or task["task_id"] in only_task_ids:
+                selected_tasks.append(task)
+
+        for task in selected_tasks:
+            self._run_task(job_id, task, executor)
+
+        counts = self._task_counts(self._tasks(job_id))
+        if counts["failed"]:
+            state = "partial" if counts["succeeded"] else "failed"
+        elif counts["pending"] or counts["running"]:
+            state = "partial"
+        else:
+            state = "succeeded"
+        self._write_status(job_id, state, f"Job {state}.")
+        self._write_summary(job_id)
+
+    def _run_task(
+        self,
+        job_id: str,
+        task: dict,
+        executor: Optional[Callable[[dict, Path], dict]],
+    ) -> None:
+        job_dir = self._job_dir(job_id)
+        task_path = job_dir / "tasks" / f"{task['task_id']}.json"
+        task["state"] = "running"
+        task["attempts"] += 1
+        task["updated_at"] = utc_now()
+        task["error"] = None
+        self._write_json(task_path, task)
+
+        try:
+            if executor is None:
+                outputs = {"mode": task["mode"], "operation": task["operation"]}
+            else:
+                outputs = executor(task, job_dir)
+            task["state"] = "succeeded"
+            task["outputs"] = outputs or {}
+            task["error"] = None
+        except Exception as exc:
+            task["state"] = "failed"
+            task["error"] = {
+                "type": exc.__class__.__name__,
+                "message": str(exc),
+                "details": {},
+            }
+        task["updated_at"] = utc_now()
+        self._write_json(task_path, task)
+
+    def _index_path(self) -> Path:
+        return self.root / "index.json"
+
+    def _read_index(self) -> dict:
+        path = self._index_path()
+        if not path.exists():
+            return {"idempotency_keys": {}}
+        return self._read_json(path)
+
+    def _write_index(self, index: dict) -> None:
+        self._write_json(self._index_path(), index)
+
+    def _find_idempotent_job(self, request: dict) -> Optional[dict]:
+        key = request.get("idempotency_key")
+        if not key:
+            return None
+
+        digest = request_hash(request)
+        record = self._read_index()["idempotency_keys"].get(key)
+        if record is None:
+            return None
+        if record["request_hash"] != digest:
+            raise JobError(
+                "idempotency_conflict",
+                "idempotency_key was already used with different input.",
+                409,
+            )
+        return self.get(record["job_id"])
+
+    def _remember_idempotency(self, request: dict, job_id: str) -> None:
+        key = request.get("idempotency_key")
+        if not key:
+            return
+
+        index = self._read_index()
+        index["idempotency_keys"][key] = {
+            "job_id": job_id,
+            "request_hash": request_hash(request),
+        }
+        self._write_index(index)
