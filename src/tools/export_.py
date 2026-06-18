@@ -54,6 +54,6 @@ def register_export_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         out_path = file_path or f"fdtd_{monitor}_{attribute}.csv"
         cmd = f'exportcsv("{monitor}", "{attribute}", "{out_path}");'
         resp = rpc.eval(cmd)
-        if resp.get("success"):
+        if resp.get("ok"):
             resp["exported_to"] = out_path
         return resp

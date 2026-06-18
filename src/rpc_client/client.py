@@ -1,188 +1,268 @@
-"""
-RPC Client — Mac 端 HTTP 客户端，封装对 Windows FDTD RPC Server 的调用。
-
-对齐实际 Windows RPC API（v242 metasurface sweep pipeline）：
-  - 返回格式: {"ok": true/false, ...}
-  - 端点: /health, /session/start, /session/close, /sweep/*, /results/*
-
-Usage:
-    from src.rpc_client.client import RpcClient
-    client = RpcClient("http://localhost:5001")
-    h = client.health()
-    r = client.session_start()
-    r = client.sweep_run(phases=[1,2,3])
-"""
+"""Mac-side HTTP client for the Windows FDTD RPC API v1."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
+from urllib.parse import quote
 
 import requests
 
 
+def _client_error(error_type: str, message: str, details: Optional[dict] = None):
+    return {
+        "ok": False,
+        "error": {
+            "type": error_type,
+            "message": message,
+            "details": details or {},
+        },
+    }
+
+
 class RpcClient:
-    """HTTP client for the Windows FDTD RPC Server (Autosweep pipeline)."""
+    """Thin client for the single RPC API v1 contract."""
 
     def __init__(self, base_url: str, timeout: float = 30.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._session = requests.Session()
 
-    # ------------------------------------------------------------------
-    # Low-level HTTP helpers
-    # ------------------------------------------------------------------
-
-    def _get(self, path: str, params: Optional[dict] = None) -> dict:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Optional[dict] = None,
+        body: Optional[dict] = None,
+        timeout: Optional[float] = None,
+    ) -> dict:
+        request_timeout = self.timeout if timeout is None else timeout
         try:
-            resp = self._session.get(
+            response = self._session.request(
+                method,
                 f"{self.base_url}{path}",
                 params=params,
-                timeout=self.timeout,
+                json=body if method != "GET" else None,
+                timeout=request_timeout,
             )
-            resp.raise_for_status()
-            return resp.json()
         except requests.ConnectionError:
-            return {"ok": False, "error": f"Cannot connect to {self.base_url}. Is RPC Server running?"}
+            return _client_error(
+                "connection_error",
+                f"Cannot connect to {self.base_url}.",
+                {"path": path},
+            )
         except requests.Timeout:
-            return {"ok": False, "error": f"Request to {path} timed out ({self.timeout}s)."}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+            return _client_error(
+                "timeout",
+                f"Request to {path} timed out after {request_timeout}s.",
+                {
+                    "path": path,
+                    "timeout_seconds": request_timeout,
+                    "remote_state": "unknown",
+                },
+            )
+        except requests.RequestException as exc:
+            return _client_error(
+                "request_error",
+                str(exc),
+                {"path": path},
+            )
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return _client_error(
+                "invalid_response",
+                f"RPC Server returned non-JSON content for {path}.",
+                {
+                    "path": path,
+                    "status_code": response.status_code,
+                },
+            )
+
+        if not isinstance(payload, dict) or "ok" not in payload:
+            return _client_error(
+                "invalid_response",
+                f"RPC Server returned an invalid v1 envelope for {path}.",
+                {
+                    "path": path,
+                    "status_code": response.status_code,
+                },
+            )
+
+        if response.status_code >= 400 and payload.get("ok") is not False:
+            return _client_error(
+                "http_error",
+                f"RPC Server returned HTTP {response.status_code}.",
+                {
+                    "path": path,
+                    "status_code": response.status_code,
+                },
+            )
+        return payload
+
+    def _get(self, path: str, params: Optional[dict] = None) -> dict:
+        return self._request("GET", path, params=params)
 
     def _post(self, path: str, body: Optional[dict] = None) -> dict:
-        try:
-            resp = self._session.post(
-                f"{self.base_url}{path}",
-                json=body or {},
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except requests.ConnectionError:
-            return {"ok": False, "error": f"Cannot connect to {self.base_url}. Is RPC Server running?"}
-        except requests.Timeout:
-            return {"ok": False, "error": f"Request to {path} timed out ({self.timeout}s)."}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        return self._request("POST", path, body=body or {})
 
-    # ------------------------------------------------------------------
-    # Health
-    # ------------------------------------------------------------------
+    # Health and session
 
     def health(self) -> dict:
-        """GET /health — check server and session status."""
         return self._get("/health")
 
-    # ------------------------------------------------------------------
-    # Session (FDTD + MATLAB)
-    # ------------------------------------------------------------------
+    def status(self) -> dict:
+        return self._get("/status")
 
     def session_start(self, hide: bool = False) -> dict:
-        """POST /session/start — start FDTD + MATLAB Engine.
-
-        Args:
-            hide: If True, headless mode (for batch sweeps).
-                  If False (default), GUI visible on Windows desktop (for debug/inspection).
-        """
         return self._post("/session/start", {"hide": hide})
 
     def session_close(self) -> dict:
-        """POST /session/close — close FDTD + MATLAB sessions."""
         return self._post("/session/close")
 
     def session_pause(self, seconds: float = 300.0) -> dict:
-        """POST /session/pause — pause, keeping GUI open for manual inspection.
-
-        Args:
-            seconds: How long to pause (default: 300s).
-                     Use a large value to keep the GUI open indefinitely.
-        """
+        """Compatibility with the deployed sweep server extension."""
         return self._post("/session/pause", {"seconds": seconds})
 
-    # ------------------------------------------------------------------
-    # Sweep configuration
-    # ------------------------------------------------------------------
+    # Model and debug
+
+    def file_save(self, file_path: Optional[str] = None) -> dict:
+        body = {}
+        if file_path is not None:
+            body["file_path"] = file_path
+        return self._post("/model/save", body)
+
+    def file_load(self, file_path: str) -> dict:
+        return self._post("/model/load", {"file_path": file_path})
+
+    def eval(self, cmd: str) -> dict:
+        return self._post("/debug/eval", {"cmd": cmd})
+
+    def getv(self, name: str) -> dict:
+        return self._post("/debug/getv", {"name": name})
+
+    def setv(self, name: str, value: Any) -> dict:
+        return self._post("/debug/setv", {"name": name, "value": value})
+
+    # Simulation
+
+    def run(self) -> dict:
+        return self._post("/simulation/run")
+
+    def getresult(self, monitor: str, attribute: str) -> dict:
+        return self._post(
+            "/simulation/result",
+            {"monitor": monitor, "attribute": attribute},
+        )
+
+    def getelectric(self, monitor: str = "monitor") -> dict:
+        return self._post("/simulation/electric", {"monitor": monitor})
+
+    # Geometry
+
+    @staticmethod
+    def _properties(properties: Optional[dict], kwargs: dict) -> dict:
+        body = dict(properties or {})
+        body.update(kwargs)
+        return body
+
+    def addfdtd(self, properties: Optional[dict] = None, **kwargs) -> dict:
+        return self._post(
+            "/geometry/fdtd-region",
+            self._properties(properties, kwargs),
+        )
+
+    def addrect(self, properties: Optional[dict] = None, **kwargs) -> dict:
+        return self._post(
+            "/geometry/rectangle",
+            self._properties(properties, kwargs),
+        )
+
+    def addcircle(self, properties: Optional[dict] = None, **kwargs) -> dict:
+        return self._post(
+            "/geometry/circle",
+            self._properties(properties, kwargs),
+        )
+
+    # Deployed sweep server extensions
 
     def sweep_config_get(self) -> dict:
-        """GET /sweep/config — get current sweep configuration."""
         return self._get("/sweep/config")
 
     def sweep_config_set(self, config: dict) -> dict:
-        """POST /sweep/config — update sweep parameters.
-
-        Common keys:
-          SWEEP_Y_AXIS: "height" | "period"
-          RATIO_PTS, HEIGHT_PTS, PERIOD_PTS: number of sweep points
-          BASE_HEIGHT, BASE_PERIOD, WAVELENGTH: physical defaults
-          FDTD_PROCESSES, FDTD_CAPACITY: parallel solving settings
-        """
         return self._post("/sweep/config", config)
 
-    # ------------------------------------------------------------------
-    # Sweep execution
-    # ------------------------------------------------------------------
-
     def sweep_run(self, phases: Optional[List[int]] = None) -> dict:
-        """POST /sweep/run — start sweep pipeline in background thread.
-
-        Args:
-            phases: Which phases to run, e.g. [1,2,3] or [1,2,3,4].
-                    Phase 1: batch .fsp generation
-                    Phase 2: parallel FDTD solving
-                    Phase 3: S-parameter extraction → .mat
-                    Phase 4: MATLAB post-process → heatmaps
-                    Default (omitted): all 4 phases.
-
-        Returns:
-            {"ok": true, "task_id": "sweep_1234567890", "message": "Sweep started"}
-        """
         body = {}
         if phases is not None:
             body["phases"] = phases
         return self._post("/sweep/run", body)
 
     def sweep_status(self, task_id: Optional[str] = None) -> dict:
-        """GET /sweep/status?task_id=... — poll sweep progress.
-
-        Returns:
-            {"ok": true, "task": {"phase": "...", "status": "running"|"done"|"error", "message": "...", "elapsed": 0}}
-        """
         params = {}
         if task_id:
             params["task_id"] = task_id
         return self._get("/sweep/status", params=params)
 
-    # ------------------------------------------------------------------
-    # Results
-    # ------------------------------------------------------------------
-
     def results_list(self) -> dict:
-        """GET /results — list files in results/ and figures/ directories."""
         return self._get("/results")
 
-    def results_download(self, filepath: str, save_to: Optional[str] = None) -> dict:
-        """GET /results/<path> — download a result file.
-
-        Args:
-            filepath: Path relative to server cwd, e.g. "figures/Transmission.svg"
-            save_to: Local path to save. Defaults to basename of filepath.
-
-        Returns:
-            {"ok": true, "saved_to": "/local/path"} or error.
-        """
+    def results_download(
+        self,
+        filepath: str,
+        save_to: Optional[str] = None,
+    ) -> dict:
+        remote_path = quote(filepath.lstrip("/"), safe="/")
+        path = f"/results/{remote_path}"
         try:
-            resp = self._session.get(
-                f"{self.base_url}/results/{filepath}",
+            response = self._session.get(
+                f"{self.base_url}{path}",
                 timeout=max(self.timeout, 60.0),
                 stream=True,
             )
-            resp.raise_for_status()
-            local_path = save_to or Path(filepath).name
-            with open(local_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            return {"ok": True, "saved_to": str(Path(local_path).resolve())}
-        except requests.HTTPError as e:
-            if e.response.status_code == 404:
-                return {"ok": False, "error": f"File not found: {filepath}"}
-            return {"ok": False, "error": str(e)}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        except requests.ConnectionError:
+            return _client_error(
+                "connection_error",
+                f"Cannot connect to {self.base_url}.",
+                {"path": path},
+            )
+        except requests.Timeout:
+            return _client_error(
+                "timeout",
+                f"Download from {path} timed out.",
+                {"path": path, "remote_state": "unknown"},
+            )
+        except requests.RequestException as exc:
+            return _client_error("request_error", str(exc), {"path": path})
+
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = None
+            if isinstance(payload, dict) and payload.get("ok") is False:
+                return payload
+            return _client_error(
+                "http_error",
+                f"RPC Server returned HTTP {response.status_code}.",
+                {"path": path, "status_code": response.status_code},
+            )
+
+        local_path = Path(save_to or Path(filepath).name)
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            with local_path.open("wb") as output:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        output.write(chunk)
+        except OSError as exc:
+            return _client_error(
+                "local_io_error",
+                str(exc),
+                {"save_to": str(local_path)},
+            )
+
+        return {
+            "ok": True,
+            "saved_to": str(local_path.resolve()),
+        }

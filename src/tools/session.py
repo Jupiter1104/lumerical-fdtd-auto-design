@@ -1,7 +1,4 @@
-"""Session management tools for FDTD MCP Server.
-
-Matches the Windows RPC API: /session/start, /session/close, /health.
-"""
+"""Session management tools for the FDTD RPC API v1."""
 
 from mcp.server.fastmcp import FastMCP
 
@@ -14,20 +11,19 @@ def register_session_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_health() -> dict:
         """
-        Check the Windows RPC Server and FDTD/MATLAB session status.
+        Check the Windows RPC Server and FDTD session status.
 
-        Returns whether the RPC server is reachable, and if FDTD and MATLAB
-        sessions are currently connected.
+        Returns whether the RPC server is reachable and whether FDTD is connected.
 
         Returns:
-            {"ok": true, "fdtd_connected": bool, "matlab_connected": bool, "active_task": str}
+            {"ok": true, "api_version": "v1", "connected": bool}
         """
         return rpc.health()
 
     @mcp.tool()
     def fdtd_session_start(hide: bool = False) -> dict:
         """
-        Start FDTD and MATLAB Engine sessions on the Windows machine.
+        Start an FDTD session on the Windows machine.
 
         Two modes:
         - hide=False (default): FDTD GUI visible on Windows desktop.
@@ -35,14 +31,13 @@ def register_session_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         - hide=True: Headless batch mode for production sweeps.
           Memory-efficient for hundreds of load() calls.
 
-        MATLAB Engine starts for post-processing heatmap generation.
         Only one session can run at a time (single-user license).
 
         Args:
             hide: If True, hide FDTD GUI. Default False (GUI visible).
 
         Returns:
-            {"ok": true, "message": "FDTD + MATLAB sessions ready"}
+            {"ok": true, "version": "...", "hide": bool, "message": "..."}
         """
         return rpc.session_start(hide=hide)
 
@@ -67,7 +62,7 @@ def register_session_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_session_close() -> dict:
         """
-        Close the FDTD and MATLAB sessions, releasing licenses.
+        Close the FDTD session, releasing its license.
 
         Always call this when done to free licenses.
 

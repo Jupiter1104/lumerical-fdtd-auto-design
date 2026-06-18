@@ -19,7 +19,7 @@ def register_model_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         If no path given, saves to the default location (fdtd_project.fsp in working dir).
 
         Args:
-            file_path: Absolute path to save the .fsp file (e.g. "C:\\projects\\mmi.fsp").
+            file_path: Path to save the .fsp file on Windows.
 
         Returns:
             Save confirmation with file path, or error.
@@ -32,7 +32,7 @@ def register_model_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         Load an existing .fsp project file.
 
         Args:
-            file_path: Absolute path to the .fsp file on the Windows machine.
+            file_path: Path to the .fsp file on the Windows machine.
 
         Returns:
             Load confirmation or error.

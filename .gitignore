@@ -12,6 +12,7 @@ build/
 .LSOverride
 
 # Environment
+.venv/
 .env
 .env.*
 
