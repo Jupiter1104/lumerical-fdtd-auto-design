@@ -87,3 +87,66 @@
   - **Windows RPC Server 代码更新统一走 git pull + 本地 .bat 重启**，避免 SSH 远程折腾。
   - Mac 端只通过 curl 验证端点，不通过 SSH 修改 Windows 文件。
   - 在 `SOP.md` 中新增"更新 RPC Server 代码"流程。
+
+## 2026-06-18 - RPC Server、Client 和 MCP 契约漂移
+
+- 现象：Windows Server 使用 `success` 和 `/session/stop`、`/sim/*`，Mac Client 按 `ok` 和 `/session/close`、`/sweep/*` 调用；模块分别能导入，但端到端不可用。
+- 根因：先分别实现各层，没有唯一 API 契约和跨层测试。
+- 修复：已冻结 RPC API v1，统一 `ok` envelope、路由和错误类型；Client 将超时标记为远端状态未知；旧路由只在 Server 保留薄兼容别名。
+- 预防：任何端点变更必须同时更新 Server、Client、MCP wrapper、smoke test，并运行 fake-server 契约测试。
+
+## 2026-06-18 - 顶层导入 lumapi 阻断 Mac 离线测试
+
+- 现象：仅导入 `rpc_server.py` 就因 Mac 没有 `ansys.lumerical.core`/`lumapi` 而失败，无法运行 Flask 契约测试。
+- 根因：模块加载阶段立即导入 Windows 专属仿真后端。
+- 修复：把 lumapi 导入延迟到 `/session/start`，并通过 `create_app(session_manager)` 注入 fake backend。
+- 预防：平台专属或重型依赖必须在实际使用点加载；HTTP 契约层应可脱离真实求解器测试。
+
+## 2026-06-18 - raw v242 lumapi 没有 `fdtd.getversion()` Python 方法
+
+- 现象：FDTD 实例已创建，但 `/session/start` 因 `AttributeError: 'FDTD' object has no attribute 'getversion'` 返回 500。
+- 根因：raw v242 lumapi 并非所有 script command 都映射为 Python 方法。
+- 修复：版本读取优先调用 Python 方法；不存在时执行 `__rpc_version=getversion;` 并用 `getv()` 读取。版本探测失败只返回 `unknown`，不使会话启动失败。
+- 预防：对 raw lumapi 命令先验证 Python 映射；非核心元数据探测不得破坏已成功建立的求解器会话。
+
+## 2026-06-18 - raw lumapi `fdtd.close()` 窗口已关但 API 不返回
+
+- 现象：v1 smoke 已完成 GUI 启动、建模和保存 `.fsp`，调用旧 `/session/stop` 后 FDTD 窗口关闭，但 HTTP 请求 60 秒超时，后续 `/status` 也被卡住。
+- 根因：raw lumapi `fdtd.close()` 可能在窗口关闭后仍不返回；若 RPC 持锁同步等待 close，会把服务线程和会话状态一起拖住。
+- 修复：`/session/close` 先摘除 `_fdtd` 和模型路径，再后台调用 `fdtd.close()`；超过短超时返回 `close_state=timed_out`，保持 RPC 服务可用。
+- 预防：释放外部 GUI/仿真后端时不要在请求线程内无限等待；close/cleanup 应可超时、可记录、可恢复。
+
+## 2026-06-18 - 批处理窗口关闭导致 RPC 进程退出
+
+- 现象：`restart_rpc.bat` 启动时健康检查通过，但用户关闭批处理窗口后 `5004` 立即不可连接，PID 文件残留。
+- 根因：用控制台 `python.exe` 从批处理窗口启动 Flask，进程生命周期受控制台窗口影响。
+- 修复：Windows 管理脚本改为 `.bat` 薄入口 + `manage_rpc.ps1`，后台服务优先使用 Lumerical 同目录 `pythonw.exe`，并自动清理陈旧 PID。
+- 预防：需要常驻的 Windows GUI/仿真控制进程不要直接挂在交互 `.bat` 控制台下；用 `pythonw.exe` 或正式服务管理器承载。
+
+## 2026-06-18 - 长任务只保存在进程内存
+
+- 现象：Flask 重启、Windows 重启或线程异常后，Agent 不知道哪些样本已完成，也无法可靠 resume。
+- 根因：把后台线程和内存字典当成作业系统，没有逐 job/task 落盘。
+- 修复：每个 job 写 `status.json`、`summary.json`、`run.log`，每个 sample/task 写独立 JSON；模型和结果使用稳定路径。
+- 预防：长任务创建时先落盘 manifest 和 task plan，再启动求解；状态接口从磁盘事实构建响应。
+
+## 2026-06-18 - 用单次 RPC/MCP 调用等待长仿真
+
+- 现象：调用超时或 Agent 上下文被阻塞，但 Windows 求解可能仍在运行，导致误判失败和重复启动。
+- 根因：没有区分“启动作业”和“等待作业完成”。
+- 修复：启动接口立即返回 `job_id/task_id`，使用轻量 status 轮询；HTTP 超时只表示请求状态未知。
+- 预防：预计超过 30 秒的操作一律异步；重复请求使用幂等键。
+
+## 2026-06-18 - 全量回传逐点 FSP 导致传输和上下文膨胀
+
+- 现象：大 sweep 下载数百个 `.fsp`，传输时间、磁盘和 Agent 状态输出明显膨胀。
+- 根因：归档没有区分“结果证据”和“调试资产”。
+- 修复：默认只回传 manifest、状态、任务 JSON、结果表、质量报告和关键图；完整 `.fsp` 归档按需开启。
+- 预防：results API 提供 evidence-only 默认模式和显式 `include_models` 选项。
+
+## 2026-06-18 - 失败后自动扩大扫描或修改求解设置
+
+- 现象：Agent 根据 warning 直接增加任务数、改变 mesh/scheduler，计算成本失控且新旧结果不可比较。
+- 根因：把“诊断建议”和“执行下一轮”合成一个动作。
+- 修复：只生成结构化 next-run 建议，列出原因、配置差异、新任务数和审批要求。
+- 预防：任何扩大参数空间、改变物理设置或新增真实求解都必须形成新 plan 和新审批。

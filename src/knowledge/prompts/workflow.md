@@ -1,49 +1,88 @@
 # FDTD Simulation Workflow Guide
 
+Status note: the standard workflow below describes the target production
+workflow. The current MCP surface registers session, model, geometry, sweep,
+results, export, and knowledge tools. Job/task, approval, resume, and quality
+report endpoints are still planned work and must not be assumed available.
+
 ## Standard Workflow
 
 ```
-1. Start Session
+1. Compile Requirement
+   natural language -> SimulationPlan
+          │
+          ▼
+2. Plan
+   validate schema / paths / units
+   expand tasks and report cost
+          │
+          ▼
+3. Optional Mock
+   verify RPC / job state / postprocess
+   never treat mock output as physics
+          │
+          ▼
+4. Approve Real Run
+   report model, job ID, task count,
+   GUI mode, resources, overwrite risk
+          │
+          ▼
+5. Start Session
    fdtd_session_start()
           │
           ▼
-2. Set Up Simulation Region
+6. Set Up Simulation Region
    fdtd_add_fdtd_region(dimension="3D", x_span=8e-6, ...)
           │
           ▼
-3. Build Geometry (layer by layer)
+7. Build Geometry (layer by layer)
    fdtd_add_rect(name="substrate", material="SiO2", ...)
    fdtd_add_rect(name="waveguide", material="Si", ...)
           │
           ▼
-4. Add Source
+8. Add Source
    fdtd_eval("addmode(); ...")
           │
           ▼
-5. Add Monitors
+9. Add Monitors
    fdtd_eval("addpower(); ...")
           │
           ▼
-6. Save & Run
-   fdtd_save("project.fsp")
-   fdtd_run()
+10. Save & Start Asynchronous Job
+    fdtd_save("<job>/models/project.fsp")
+    submit -> job_id/task_id
           │
           ▼
-7. Verify Results
+11. Poll Compact Status
+    state / completed / failed / missing / short log tail
+          │
+          ▼
+12. Verify Results
    fdtd_get_result("monitor", "T")
    fdtd_physical_check("monitor", "transmission")
           │
           ▼
-8. Iterate (if needed)
-   fdtd_setv("wg_width", 500e-9)
-   fdtd_run()
+13. Quality Gate
+    summary.json + quality_report.json
+    pass / warning / fail
           │
           ▼
-9. Export & Stop
+14. Suggest Next Run
+    produce a new plan; do not automatically expand real work
+          │
+          ▼
+15. Export & Stop
    fdtd_export_gds("layout.gds")
    fdtd_save("project_final.fsp")
-   fdtd_session_stop()
+   fdtd_session_close()
 ```
+
+Operational rules:
+
+- A solver-completed state is not a physical-quality conclusion.
+- Jobs expected to exceed 30 seconds must return an ID and run asynchronously.
+- Resume only compatible tasks with unchanged physical settings.
+- Default collection is evidence-first; download per-task `.fsp` files only for debugging.
 
 ## SOI Waveguide Simulation
 

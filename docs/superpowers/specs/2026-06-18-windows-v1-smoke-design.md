@@ -37,7 +37,7 @@ scripts/windows/manage_rpc.ps1
 - 默认端口：`5004`。
 - 可通过环境变量 `FDTD_PYTHON` 和 `FDTD_RPC_PORT` 覆盖。
 - PID：`runtime\rpc_server.pid`。
-- 日志：`logs\rpc_server.log`。
+- 日志：`logs\rpc_server.out.log` 和 `logs\rpc_server.err.log`。
 - 启动前检查 Python、项目文件和端口。
 - 启动后轮询 `/health`；健康检查失败则返回非零退出码并显示日志路径。
 

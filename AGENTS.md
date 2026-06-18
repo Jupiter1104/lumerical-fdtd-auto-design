@@ -26,11 +26,19 @@
 - **License 硬约束**：软件只能在 Windows 上运行（v242，单机 domain=0）。
 - **可复现性**：仿真结果必须可由脚本完整复现。
 - **平台隔离**：RPC Server 代码只跑在 Windows 上，MCP Server 和控制脚本只跑在 Mac 上。
-- **Windows 代码更新**：Windows 端 `rpc_server.py` 通过 git pull + 本地 `.bat` 重启来更新，**不要通过 Mac SSH 远程修改和重启**（SSH 非交互会话不支持 `start /MIN`，易导致多进程抢占端口）。详见 PITFALLS.md 2026-06-18 条目。
+- **Windows 代码更新**：Windows 端代码通过 `git pull --ff-only` + 本地 `.bat` 重启来更新。SSH 可用于只读检查、拉代码和读取日志；不要通过 SSH 反复启动需要桌面会话的 FDTD GUI。
 - **非目标**：不做 RPC Server 公网暴露/强安全认证；不做多机集群调度。
 - **语言**：代码注释和变量名使用英文；文档正文使用中文。
 - **交付前检查**：每个脚本必须含最小可运行示例，在 `DEV_LOG.md` 中记录运行结果。
 - **Headless 必查**：`clearjobs()` 在 sweep 前；`express mode` 在每次 `load()` 后 `save()` 前设置。违反即 0 valid。
+- **自然语言不直接执行**：用户需求必须先编译为可检查的结构化计划，至少包含器件、材料、光源、监视器、边界、网格、参数空间、FOM、验收条件、任务数和输出目录。
+- **运行模式分级**：默认先走 `plan`；软件链验证走 `mock`；只有真实求解才进入 `real`。`plan/mock` 结果不得作为物理证据。
+- **真实运行审批**：任何 `real` sweep、优化或整器件验证前，必须报告任务数、最大迭代数、模型/配置路径、GUI 状态、调度与资源、输出覆盖风险，并取得针对该运行的明确批准。
+- **作业必须落盘**：长任务不得只存在于 Flask 线程内存。每个 job 和 sample/task 必须有稳定 ID、状态文件、日志、输入快照、结果路径和可恢复信息。
+- **异步优先**：预计超过 30 秒的操作应立即返回 `job_id/task_id`，由状态接口轮询；MCP 工具不得用单次长 HTTP 请求等待求解结束。
+- **恢复不改物理**：`resume` 只能跳过已完成样本或重试临时 session/IO 失败，不得静默扩大扫描、修改 mesh/boundary、切换 scheduler 或覆盖原始结果。
+- **结果质量门**：solver 完成不等于任务通过。交付前必须生成结构化质量结论，并区分 `pass`、`warning`、`fail`。
+- **证据优先回传**：默认回传 manifest、status、summary、任务记录、标量结果和关键图；逐点 `.fsp` 只在调试或明确要求时传输。
 
 ## 核心工作模式：人判物理，AI 执行
 
@@ -61,6 +69,9 @@ Agent **不具备**物理直觉。它能处理报错（语法错误、网格不�
 2. `save()` 不指定完整路径，导致弹出交互窗口。
 3. 监视器尺寸过大，与相邻波导重叠，功率读数偏高。
 4. 仿真精度（mesh accuracy）设置不当——太低结果不准，太高仿真时间过长。
+5. RPC Server、Mac Client 和 MCP 工具的路径或返回字段不一致，导致各层单独可运行但链路不可用。
+6. 将长任务状态只保存在进程内存，服务重启后无法恢复或审计。
+7. 把求解器正常结束误判为物理结果合格，跳过质量报告和人工审核。
 
 ## 验证
 
@@ -72,20 +83,26 @@ Agent **不具备**物理直觉。它能处理报错（语法错误、网格不�
 # 1. 验证 lumapi 可用
 F:\Program Files\Lumerical\v242\python\python.exe -c "import lumapi; print('OK')"
 
-# 2. 启动 RPC Server
-F:\Program Files\Lumerical\v242\python\python.exe rpc_server.py --port 5003
+# 2. 启动新 v1 RPC Server（端口 5004）
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+scripts\windows\restart_rpc.bat
 
 # 3. 本地验证
-curl http://localhost:5003/health
+curl http://127.0.0.1:5004/health
 
 # === Mac 端 ===
 
-# 4. 建立 SSH 隧道
+# 4. 建立 SSH 隧道（按目标选择）
 ssh -L 5003:localhost:5003 32482@192.168.31.26
+ssh -L 5004:localhost:5004 32482@192.168.31.26
 
-# 5. 端到端 smoke test
+# 5. 旧 sweep smoke test
 python scripts/smoke_test.py --rpc http://localhost:5003
 
+# 5b. 新 v1 smoke test
+python scripts/v1_smoke_test.py --rpc http://localhost:5004
+
 # 6. 启动 MCP Server（供 Claude Code 调用）
+# 旧 sweep 工具指向 5003；通用 v1 session/model/geometry/debug 指向 5004。
 FDTD_RPC_URL=http://localhost:5003 python -m src.server
 ```

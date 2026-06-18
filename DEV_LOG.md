@@ -238,3 +238,49 @@
   - Step 2：Mac RPC Client 补方法。
   - Step 3：MCP Server 接线 geometry/model/export。
   - Step 4：创建 `.mcp.json`。
+
+## 2026-06-18 - 迁移旧 Autosweep 生产经验到新 RPC 项目
+
+- 目标：把旧项目经过真实 9/25/49 点及长流程验证的可靠性经验补入新项目文档，作为后续开发约束。
+- 修改：
+  - `AGENTS.md`：增加结构化计划、`plan/mock/real`、真实运行审批、持久 job/task、异步、恢复、质量门和 evidence-first 规则。
+  - `REQUIREMENTS.md`：增加计划编译、作业持久化、审批、质量报告、幂等恢复等范围和验收标准。
+  - `TECH_STACK.md`：补充 RPC API v1 契约、job/task 目录、运行模式和审批模型。
+  - `SOP.md`：新增自然语言到真实仿真、失败恢复、RPC/MCP 契约变更流程。
+  - `PITFALLS.md`：记录契约漂移、内存作业、阻塞长调用、全量模型回传和自动扩大扫描风险。
+  - `RETROSPECTIVE.md`、`README.md` 和 MCP 工作流提示同步更新。
+- 验证：文档路径、术语和现有代码状态交叉检查；未运行真实 FDTD。
+- 后续：按文档顺序先统一 API v1 和测试，再实现持久 job/task 状态机。
+
+## 2026-06-18 - 完成 RPC API v1 与离线契约测试
+
+- 目标：统一通用 Windows Server、Mac `RpcClient` 与 MCP 包装的路由、响应和错误语义；不实现持久 job/task。
+- 修改：
+  - `rpc_server.py`：增加 `create_app()` 和 fake backend 注入；lumapi 延迟加载；统一 `ok`/结构化 error；新增 v1 路由；旧路由作为带弃用元数据的薄别名。
+  - `src/rpc_client/client.py`：补齐 model/debug/simulation/geometry 方法；统一连接、超时、HTTP、非 JSON 和下载错误；超时明确标记远端状态未知。
+  - `src/server.py`：注册 model、geometry、export 模块；修正 export 的 `ok` 判断。
+  - `tests/`：增加 Server、Client 和 MCP 注册三层离线检查。
+  - `requirements-dev.txt`：记录 Mac 离线测试依赖。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`60 passed`。
+  - `import rpc_server; import src.server`：在无 lumapi 的 Mac 上通过。
+- 未验证：Windows 本地实际 lumapi/FDTD 会话和已部署 sweep Server；必须通过 git pull + 本地 `.bat` 重启后做最小真实 smoke。
+- 下一步：Windows 验证通过后，实现落盘 job/task 状态机与 `plan/mock/real`。
+
+## 2026-06-18 - Windows v1 常驻服务与 smoke 联调
+
+- 目标：在不影响旧 `5003` sweep 服务的前提下，用新 clone 目录验证仓库内 API v1。
+- 修改：
+  - 新增 `scripts/windows/manage_rpc.ps1` 与 `.bat` 薄入口，默认管理 `127.0.0.1:5004`。
+  - 管理脚本使用 PID 文件、日志目录、健康检查和 `pythonw.exe` 常驻启动，避免批处理窗口关闭时杀掉服务。
+  - 新增 `scripts/v1_smoke_test.py`：health → GUI session → 最小几何 → 保存 `.fsp` → 旧 `/session/stop` 兼容 → final health。
+  - 新增 `docs/RPC_API_V1.md` 和 `docs/WINDOWS_RUNBOOK.md` 作为接手者入口。
+- 验证：
+  - Mac 离线：`.venv/bin/python -m pytest -q`，`65 passed`。
+  - Windows：`0cdf639` 已同步到 `F:\lumerical-fdtd-auto-design\fdtd-auto-design`，用户本地重启后 `5004` health 通过。
+  - 真实 smoke 已通过 GUI session、status、FDTD region、silicon rectangle 和 model save，生成 `smoke-output\rpc_v1_smoke_20260618_180752.fsp`。
+  - 失败点收窄为旧 `/session/stop` → raw lumapi `fdtd.close()` 不返回；仓库已加入 close detach/timeout 修复，待 Windows 同步后复测完整 smoke。
+- 后续：
+  - Windows `git pull --ff-only` 后本地重启 `scripts\windows\restart_rpc.bat`，再运行 `scripts\v1_smoke_test.py`。
+  - smoke 通过后再设计持久 job/task 状态机。

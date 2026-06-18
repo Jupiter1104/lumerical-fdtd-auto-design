@@ -4,7 +4,7 @@ The process owns one persistent lumapi session. Mac-side clients call the v1
 HTTP contract defined in docs/superpowers/specs/.
 
 Run on Windows:
-    python rpc_server.py --port 5003
+    python rpc_server.py --port 5004
 """
 
 import argparse
@@ -24,6 +24,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger("fdtd-rpc")
+
+FDTD_CLOSE_TIMEOUT_SECONDS = 5.0
 
 
 class RpcError(Exception):
@@ -162,18 +164,53 @@ class SessionManager:
                 "message": f"FDTD {version} session started.",
             }
 
+    @staticmethod
+    def _close_backend(fdtd) -> str:
+        """Close FDTD without letting raw lumapi hang the RPC service."""
+        close_error = []
+
+        def worker():
+            try:
+                fdtd.close()
+            except Exception as exc:
+                close_error.append(exc)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        thread.join(FDTD_CLOSE_TIMEOUT_SECONDS)
+
+        if thread.is_alive():
+            logger.warning(
+                "FDTD close did not return within %.1fs; RPC session was detached.",
+                FDTD_CLOSE_TIMEOUT_SECONDS,
+            )
+            return "timed_out"
+        if close_error:
+            error = close_error[0]
+            logger.warning(
+                "FDTD close raised an error.",
+                exc_info=(type(error), error, error.__traceback__),
+            )
+            return "error"
+        return "closed"
+
     def close(self) -> dict:
-        """Close the active session and release the license."""
+        """Detach the active session and ask FDTD to release the license."""
         with self._lock:
             if self._fdtd is None:
                 return {"message": "No active FDTD session."}
-            try:
-                self._fdtd.close()
-            finally:
-                self._fdtd = None
-                self._model_file = None
+            fdtd = self._fdtd
+            self._fdtd = None
+            self._model_file = None
+
+        close_state = self._close_backend(fdtd)
+        if close_state == "closed":
             logger.info("FDTD session closed.")
-            return {"message": "FDTD session closed."}
+            message = "FDTD session closed."
+        else:
+            logger.info("FDTD session detached (close_state=%s).", close_state)
+            message = "FDTD session detached; backend close did not confirm."
+        return {"message": message, "close_state": close_state}
 
     def status(self) -> dict:
         if self._fdtd is None:

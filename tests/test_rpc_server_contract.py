@@ -1,5 +1,6 @@
 import importlib
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -242,6 +243,38 @@ def test_version_probe_failure_does_not_break_session_start(
     assert result["version"] == "unknown"
     assert manager.is_connected is True
     manager.close()
+
+
+def test_session_close_detaches_when_backend_close_hangs(
+    server_module, monkeypatch
+):
+    close_started = threading.Event()
+    release_close = threading.Event()
+
+    class HangingFdtd:
+        def close(self):
+            close_started.set()
+            release_close.wait()
+
+    monkeypatch.setattr(server_module, "FDTD_CLOSE_TIMEOUT_SECONDS", 0.01)
+    manager = server_module.SessionManager()
+    manager._fdtd = HangingFdtd()
+    manager._model_file = "active.fsp"
+
+    try:
+        result = manager.close()
+
+        assert close_started.wait(timeout=1.0)
+        assert result["close_state"] == "timed_out"
+        assert result["message"] == "FDTD session detached; backend close did not confirm."
+        assert manager.is_connected is False
+        assert manager.status() == {
+            "connected": False,
+            "version": None,
+            "model_file": None,
+        }
+    finally:
+        release_close.set()
 
 
 def test_missing_model_file_returns_not_found(server_module, tmp_path):
