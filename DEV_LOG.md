@@ -412,3 +412,32 @@
   - `AGENTS.md`、`SOP.md`、`TECH_STACK.md`、`PITFALLS.md` 修正旧的“headless 必开 express mode=1”说法。
 - 验证：
   - 聚焦 express-mode 测试通过；待全量验证后同步 Windows。
+
+## 2026-06-18 - Task 9 本地验证、Windows 同步与真实 2×2 准备
+
+- 目标：把原生异步 sweep 最新代码同步到 Windows，安装模板，重启 `5004`，完成真实 2×2 前的 mock/evidence 准备检查。
+- 本地验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`113 passed`。
+  - `rg 'requests|run_deployed_sweep|FDTD_SWEEP_RPC_URL|127\.0\.0\.1:5005' src/sweep_job.py src/native_sweep.py rpc_server.py`：无输出。
+- 同步：
+  - Mac 推送到 GitHub：`44aefd6 fix: default metasurface sweep to cpu express mode`。
+  - Windows `F:\lumerical-fdtd-auto-design\fdtd-auto-design` 已 `git pull --ff-only` 到 `44aefd6`。
+- 模板：
+  - 用户将 CPU 模板放在 Windows 项目根目录 `base_model.fsp`。
+  - 已用 `scripts\windows\install_metasurface_template.ps1 -Source .\base_model.fsp` 安装到 `templates\metasurface\base_model.fsp`。
+  - 模板大小：`728975` bytes。
+  - SHA-256：`03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176`。
+  - 用户确认模板未勾选 express mode，resource 使用 CPU；代码默认 `EXPRESS_MODE=0`。
+- Windows 服务：
+  - 已通过管理脚本重启 `127.0.0.1:5004`，PID `37336`。
+  - `/health`：`ok=true`, `api_version=v1`, `connected=false`。
+  - `/status`：`connected=false`，未占用 FDTD session/license。
+- mock 2×2：
+  - job_id：`job_20260618_234751_metasurface_sweep`。
+  - state：`succeeded`。
+  - task：`4 succeeded / 0 failed`。
+  - quality：`pass`。
+  - evidence：`results/sweep_results.csv`、`results/sweep_summary.json`、`quality_report.json`、`evidence/index.json`、`transmission_heatmap.svg`、`phase_heatmap.svg` 均已生成。
+- 后续：
+  - Task 10 真实 2×2 前必须给出审批摘要：4 samples、phases `[1,2,3,4]`、CPU/`EXPRESS_MODE=0`、模板 SHA、输出目录、license/覆盖风险，并等待用户明确批准。
