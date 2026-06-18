@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
-from src.sweep_job import build_sweep_tasks, run_mock_sweep
+from src.sweep_job import (
+    build_sweep_tasks,
+    normalize_sweep_input,
+    run_mock_sample,
+)
 
 
 JOB_STATES = {"planned", "queued", "running", "succeeded", "failed", "partial"}
@@ -75,17 +79,7 @@ class JobStore:
         executor: Optional[Callable[[dict, Path], dict]] = None,
     ) -> dict:
         normalized = self._normalize_request(request)
-        if normalized["mode"] == "real":
-            approval = normalized["approval"]
-            if (
-                approval.get("approved") is not True
-                or approval.get("approved_for") != "real_run"
-            ):
-                raise JobError(
-                    "approval_required",
-                    "Real jobs require explicit approval.",
-                    403,
-                )
+        self._require_real_approval(normalized)
 
         existing = self._find_idempotent_job(normalized)
         if existing:
@@ -95,6 +89,18 @@ class JobStore:
         self._create_job(job_id, normalized, state="queued")
         self._remember_idempotency(normalized, job_id)
         self._run_job(job_id, executor)
+        return self.get(job_id)
+
+    def enqueue(self, request: dict) -> dict:
+        normalized = self._normalize_request(request)
+        self._require_real_approval(normalized)
+        existing = self._find_idempotent_job(normalized)
+        if existing:
+            return existing
+
+        job_id = self._new_job_id(normalized["job_type"])
+        self._create_job(job_id, normalized, state="queued")
+        self._remember_idempotency(normalized, job_id)
         return self.get(job_id)
 
     def get(self, job_id: str) -> dict:
@@ -167,7 +173,7 @@ class JobStore:
                 400,
             )
 
-        return {
+        normalized = {
             "mode": mode,
             "job_type": job_type,
             "idempotency_key": request.get("idempotency_key"),
@@ -175,6 +181,23 @@ class JobStore:
             or {"approved": False, "approved_for": None},
             "tasks": tasks,
         }
+        if job_type == "metasurface-sweep":
+            normalized["sweep"] = normalize_sweep_input(request)
+        return normalized
+
+    def _require_real_approval(self, request: dict) -> None:
+        if request["mode"] != "real":
+            return
+        approval = request["approval"]
+        if (
+            approval.get("approved") is not True
+            or approval.get("approved_for") != "real_run"
+        ):
+            raise JobError(
+                "approval_required",
+                "Real jobs require explicit approval.",
+                403,
+            )
 
     def _new_job_id(self, job_type: str) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -226,6 +249,7 @@ class JobStore:
             task = {
                 "task_id": task_id,
                 "state": "pending",
+                "phase": "pending",
                 "mode": request["mode"],
                 "operation": task_input.get("operation", request["job_type"]),
                 "input": task_input.get("input", {}),
@@ -278,6 +302,103 @@ class JobStore:
             self._read_json(path)
             for path in sorted(tasks_dir.glob("task_*.json"))
         ]
+
+    def update_task(
+        self,
+        job_id: str,
+        task_id: str,
+        *,
+        state: Optional[str] = None,
+        phase: Optional[str] = None,
+        outputs: Optional[dict] = None,
+        error: Optional[dict] = None,
+    ) -> dict:
+        task_path = self._job_dir(job_id) / "tasks" / f"{task_id}.json"
+        if not task_path.exists():
+            raise JobError(
+                "task_not_found",
+                f"Task not found: {task_id}",
+                404,
+                {"job_id": job_id, "task_id": task_id},
+            )
+        task = self._read_json(task_path)
+        if state is not None:
+            if state not in TASK_STATES:
+                raise JobError(
+                    "validation_error",
+                    f"Invalid task state: {state}",
+                    400,
+                )
+            task["state"] = state
+        if phase is not None:
+            task["phase"] = phase
+        if outputs is not None:
+            task["outputs"].update(outputs)
+        task["error"] = error
+        task["updated_at"] = utc_now()
+        self._write_json(task_path, task)
+        return task
+
+    def append_log(self, job_id: str, message: str) -> None:
+        with (self._job_dir(job_id) / "run.log").open(
+            "a",
+            encoding="utf-8",
+        ) as output:
+            output.write(f"{utc_now()} {message}\n")
+
+    def mark_running(self, job_id: str) -> dict:
+        self.append_log(job_id, "Job running.")
+        return self._write_status(job_id, "running", "Job running.")
+
+    def finalize(self, job_id: str) -> dict:
+        counts = self._task_counts(self._tasks(job_id))
+        if counts["failed"]:
+            state = "partial" if counts["succeeded"] else "failed"
+        elif counts["pending"] or counts["running"]:
+            state = "partial"
+        else:
+            state = "succeeded"
+        self._write_status(job_id, state, f"Job {state}.")
+        self._write_summary(job_id)
+        self.append_log(job_id, f"Job {state}.")
+        return self.get(job_id)
+
+    def recover_interrupted_jobs(self) -> list:
+        recovered = []
+        if not self.root.exists():
+            return recovered
+        for job_dir in sorted(self.root.glob("job_*")):
+            status_path = job_dir / "status.json"
+            if not status_path.exists():
+                continue
+            status = self._read_json(status_path)
+            if status["state"] != "running":
+                continue
+            job_id = job_dir.name
+            for task in self._tasks(job_id):
+                if task["state"] == "running":
+                    self.update_task(
+                        job_id,
+                        task["task_id"],
+                        state="failed",
+                        phase=task.get("phase", "interrupted"),
+                        error={
+                            "type": "interrupted",
+                            "message": (
+                                "RPC service stopped while task was running."
+                            ),
+                            "details": {},
+                        },
+                    )
+            self._write_status(
+                job_id,
+                "partial",
+                "Job interrupted; resume required.",
+            )
+            self._write_summary(job_id)
+            self.append_log(job_id, "Recovered interrupted job.")
+            recovered.append(job_id)
+        return recovered
 
     def _task_counts(self, tasks: list) -> dict:
         counts = {state: 0 for state in TASK_STATES}
@@ -365,8 +486,8 @@ class JobStore:
         self._write_json(task_path, task)
 
         try:
-            if executor is None and task["operation"] == "metasurface-sweep":
-                outputs = run_mock_sweep(task, job_dir)
+            if executor is None and task["operation"] == "metasurface-sample":
+                outputs = run_mock_sample(task, job_dir)
             elif executor is None:
                 outputs = {"mode": task["mode"], "operation": task["operation"]}
             else:

@@ -151,29 +151,114 @@ def test_resume_selects_pending_and_failed_tasks_only(tmp_path):
     assert resume["task_ids"] == ["task_0002", "task_0003"]
 
 
-def test_plan_accepts_metasurface_sweep_and_creates_default_task(tmp_path):
+def test_plan_accepts_metasurface_sweep_and_creates_sample_tasks(tmp_path):
     store = JobStore(tmp_path / "jobs", code_version="test-sha")
 
     result = store.plan({"mode": "mock", "job_type": "metasurface-sweep"})
 
     job_dir = tmp_path / "jobs" / result["job_id"]
-    task = read_json(job_dir / "tasks" / "task_0001.json")
+    tasks = [
+        read_json(path)
+        for path in sorted((job_dir / "tasks").glob("task_*.json"))
+    ]
     manifest = read_json(job_dir / "manifest.json")
 
     assert result["state"] == "planned"
+    assert result["task_count"] == 4
     assert manifest["job_type"] == "metasurface-sweep"
-    assert task["operation"] == "metasurface-sweep"
-    assert task["input"]["config"]["RATIO_PTS"] == 2
-    assert task["input"]["phases"] == [1, 2, 3]
+    assert {task["operation"] for task in tasks} == {"metasurface-sample"}
+    assert tasks[0]["input"]["ratio"] == 0.2
+    assert tasks[-1]["input"]["period"] == 540e-9
 
 
-def test_summary_includes_quality_and_evidence_when_present(tmp_path):
+def test_mock_metasurface_start_writes_one_result_per_sample(tmp_path):
     store = JobStore(tmp_path / "jobs", code_version="test-sha")
 
     result = store.start({"mode": "mock", "job_type": "metasurface-sweep"})
 
     summary = read_json(tmp_path / "jobs" / result["job_id"] / "summary.json")
 
-    assert summary["quality_report"]["conclusion"] == "pass"
-    assert summary["quality_report"]["requires_human_review"] is True
-    assert summary["evidence"]["download_policy"]["default_payload"] == "evidence-only"
+    assert summary["task_counts"]["succeeded"] == 4
+    assert len(summary["results"]) == 4
+    assert all(item["synthetic"] is True for item in summary["results"])
+
+
+def test_enqueue_creates_queued_job_without_executing(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+
+    result = store.enqueue(
+        {
+            "mode": "real",
+            "job_type": "metasurface-sweep",
+            "sweep": {
+                "config": {
+                    "RATIO_LIST": [0.2, 0.8],
+                    "PERIOD_LIST": [390e-9, 540e-9],
+                }
+            },
+            "approval": {"approved": True, "approved_for": "real_run"},
+        }
+    )
+
+    assert result["state"] == "queued"
+    assert result["task_count"] == 4
+    assert all(
+        task["state"] == "pending"
+        for task in store.list_tasks(result["job_id"])["tasks"]
+    )
+
+
+def test_update_task_persists_phase_outputs_and_error(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.plan({"mode": "mock", "job_type": "geometry-smoke"})
+
+    task = store.update_task(
+        job["job_id"],
+        "task_0001",
+        state="running",
+        phase="generating",
+        outputs={"model_file": "models/task_0001.fsp"},
+        error=None,
+    )
+
+    assert task["state"] == "running"
+    assert task["phase"] == "generating"
+    assert task["outputs"]["model_file"].endswith("task_0001.fsp")
+
+
+def test_recover_interrupted_jobs_marks_running_state_retriable(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.plan(
+        {
+            "mode": "mock",
+            "job_type": "geometry-smoke",
+            "tasks": [
+                {"operation": "geometry-smoke", "input": {}},
+                {"operation": "geometry-smoke", "input": {}},
+            ],
+        }
+    )
+    job_id = job["job_id"]
+    store.update_task(
+        job_id,
+        "task_0001",
+        state="succeeded",
+        phase="complete",
+    )
+    store.update_task(
+        job_id,
+        "task_0002",
+        state="running",
+        phase="solving",
+    )
+    store._write_status(job_id, "running", "Job running.")
+
+    recovered = store.recover_interrupted_jobs()
+
+    assert recovered == [job_id]
+    state = store.get(job_id)
+    tasks = store.list_tasks(job_id)["tasks"]
+    assert state["status"]["state"] == "partial"
+    assert tasks[0]["state"] == "succeeded"
+    assert tasks[1]["state"] == "failed"
+    assert tasks[1]["error"]["type"] == "interrupted"
