@@ -83,9 +83,10 @@
 - `lumapi` 延迟到 `/session/start` 时导入，因此 Mac 可在无 Lumerical 环境运行契约测试。
 - raw v242 没有 `fdtd.getversion()` Python 方法，版本读取通过 script command `getversion` 兼容。
 - raw lumapi `fdtd.close()` 可能在窗口关闭后不返回；`/session/close` 先摘除 RPC 会话，再后台关闭后端，超时返回 `close_state=timed_out`。
+- `/jobs/*` v1 第一版已实现：plan、start、status、tasks、resume；当前真实执行仅限短 `geometry-smoke`，长 sweep 仍走旧 `5003` 或下一阶段接入。
 - 旧 `/session/stop`、`/sim/*`、`/geom/*` 等路由仅在 Server 端作为弃用别名保留；Client/MCP 只调用 v1。
-- 文件参数限制到 Windows workspace/job root 将随持久 job 层实现；当前通用 model 端点仍需受控网络环境。
-- 真实 job 审批字段将在下一阶段实现；通用 `/debug/eval` 仅作为调试入口，不作为默认自然语言建模入口。
+- 文件参数限制到 Windows workspace/job root 仍需后续强化；当前通用 model 端点仍需受控网络环境。
+- 通用 `/debug/eval` 仅作为调试入口，不作为默认自然语言建模入口。
 
 已实现与下一阶段预留的高层端点分组：
 
@@ -95,12 +96,11 @@
 /geometry/*         typed 几何和仿真对象
 /debug/*            受审计的 eval/getv/setv 调试入口
 /simulation/*       当前模型的短 smoke 运行和结果读取
-/jobs/plan          校验 SimulationPlan，不求解
-/jobs               创建持久 job
-/jobs/<id>/start    启动 mock/real
-/jobs/<id>/status   返回轻量状态摘要
-/jobs/<id>/resume   恢复兼容 job
-/jobs/<id>/results  列出或下载证据文件
+/jobs/plan          创建 planned job，落盘 task 清单但不执行
+/jobs/start         创建并执行 mock 或短 real geometry-smoke job
+/jobs/<id>          读取 manifest/status/summary
+/jobs/<id>/tasks    读取 task 摘要
+/jobs/<id>/resume   仅重试 pending/failed task
 ```
 
 ### 持久 Job/Task 数据模型
@@ -109,18 +109,17 @@
 
 ```text
 jobs/<job_id>/
-├── request.json          # 原始自然语言或调用来源
-├── config.json           # 规范化 SimulationPlan
 ├── manifest.json         # 软件版本、代码版本、模板和依赖
 ├── status.json           # 当前阶段和轻量进度
 ├── summary.json          # 完成数、失败数、缺失数、结果索引
-├── quality_report.json   # pass / warning / fail 与原因
 ├── run.log
+├── inputs/
+│   └── request.json      # 原始请求快照
 ├── tasks/
 │   └── <task_id>.json    # 参数、状态、时间、错误、结果路径
 ├── models/
 ├── results/
-└── figures/
+└── evidence/
 ```
 
 `resume` 只跳过已有完整结果的 task；任何 mesh、boundary、FOM 或参数范围变化都必须创建新 job 或新 plan revision。

@@ -11,11 +11,11 @@
 - 阶段：MVP 验证完成，通用建模能力补全中
 - 文档基线：2026-06-18 — API v1、Windows 本地重启脚本和真实 smoke 流程已对齐到代码
 - 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → 4 点真实 sweep，结果 4/4 valid
-- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；65 项离线测试通过。Windows `5004` 已加载 close detach/timeout 修复，真实 v1 smoke 全流程通过并生成 `.fsp`
+- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已加载 close detach/timeout 修复，真实 v1 smoke 全流程通过并生成 `.fsp`。`/jobs/*` v1 第一版已实现 plan、start、status、tasks、resume；当前真实执行仅限短 `geometry-smoke`
 - 注意：当前仍是过渡期。旧 `5003` sweep 服务负责已验证的 metasurface sweep；新 `5004` v1 服务负责通用 session/model/geometry/debug smoke，尚未承载完整 sweep 引擎
 - 主要下一步：
-  - 建立落盘 job/task 状态机，支持 `plan`、`mock`、`real`、状态查询和 `resume`
-  - 增加真实运行审批摘要、质量报告和 evidence-first 结果回传
+  - Windows 同步后用短 `real geometry-smoke` 验证 job 目录和 `.fsp` 产物
+  - 将旧 sweep/后处理接入持久 job/task，并补质量报告和 evidence-first 结果回传
   - MCP Server 接入 Claude Code（创建 `.mcp.json`）
 
 ## 核心文档

@@ -2,8 +2,10 @@
 
 Status note: the standard workflow below describes the target production
 workflow. The current MCP surface registers session, model, geometry, sweep,
-results, export, and knowledge tools. Job/task, approval, resume, and quality
-report endpoints are still planned work and must not be assumed available.
+results, export, and knowledge tools. Job/task endpoints are available for
+persistent `mock` and short `real geometry-smoke` workflows. Full sweep,
+optimization, cancellation, and quality reports are still planned work and
+must not be assumed available.
 
 ## Standard Workflow
 

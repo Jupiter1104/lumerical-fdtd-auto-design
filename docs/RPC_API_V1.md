@@ -3,7 +3,7 @@
 ## 状态
 
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
-- 离线验证：Mac 上 `65 passed`，不依赖 Lumerical。
+- 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
 - Windows 状态：`127.0.0.1:5004` 真实 v1 smoke 全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 过渡期：旧 `5003` Autosweep 服务与新 `5004` v1 服务并行；本文件只描述 `5004` v1。
 
@@ -56,6 +56,11 @@
 | POST | `/geometry/fdtd-region` | 添加 FDTD 区域 |
 | POST | `/geometry/rectangle` | 添加矩形 |
 | POST | `/geometry/circle` | 添加圆形 |
+| POST | `/jobs/plan` | 创建 planned job，落盘 task 清单但不执行 |
+| POST | `/jobs/start` | 创建并执行 mock 或短 real geometry-smoke job |
+| GET | `/jobs/<job_id>` | 读取 manifest/status/summary |
+| GET | `/jobs/<job_id>/tasks` | 读取 task 摘要 |
+| POST | `/jobs/<job_id>/resume` | 仅重试 pending/failed task |
 
 ## 兼容旧路由
 
@@ -91,5 +96,6 @@
 
 - `/debug/eval` 仅用于诊断，不是自然语言建模入口。
 - 文件路径越界限制将在持久 job 层实现；当前 v1 服务仅在受控本地/隧道环境使用。
-- `/jobs/*`、审批、恢复和质量报告尚未实现。
+- 第一版 `/jobs/*` 已实现 plan、start、status、tasks 和 resume；当前只执行 `mock` 和短 `real geometry-smoke`。
+- 完整 sweep、优化、取消、并发队列和质量报告不在本版。
 - 旧 sweep API `/sweep/*`、`/results/*` 属于已部署 Autosweep 扩展；仓库通用 v1 Server 当前不承载完整 sweep 引擎。

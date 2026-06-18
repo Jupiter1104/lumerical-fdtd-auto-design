@@ -107,6 +107,8 @@
 5. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
 6. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
+当前 `/jobs/*` v1 第一版已实现：plan、start、status、tasks、resume。真实执行仅限短 `geometry-smoke`，长 sweep 仍走旧 `5003` 或下一阶段接入。
+
 ## SOP-009 - RPC/MCP 契约变更
 
 1. 先更新唯一 API v1 契约和测试样例。

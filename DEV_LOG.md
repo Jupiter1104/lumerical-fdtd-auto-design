@@ -284,3 +284,15 @@
   - Windows 同步并本地重启后，完整 v1 smoke 通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 后续：
   - 设计并实现持久 job/task 状态机。
+
+## 2026-06-18 - 持久 job/task 状态机第一版
+
+- 目标：让新 `5004` API v1 具备落盘 job/task、幂等、审批和 resume 地基。
+- 修改：
+  - 新增 `src/job_store.py`，负责 `jobs/` 目录、manifest/status/task/summary、幂等索引和 resume 选择。
+  - `rpc_server.py` 增加 `/jobs/plan`、`/jobs/start`、`/jobs/<job_id>`、`/jobs/<job_id>/tasks`、`/jobs/<job_id>/resume`。
+  - `RpcClient` 增加 job helper 方法。
+- 验证：
+  - `.venv/bin/python -m pytest -q`：待最终全量验证。
+- 后续：
+  - Windows 同步后用短 `real geometry-smoke` 验证 job 目录和 `.fsp` 产物。
