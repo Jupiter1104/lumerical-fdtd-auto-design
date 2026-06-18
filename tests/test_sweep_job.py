@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from src.sweep_job import (
     build_sweep_tasks,
     run_deployed_sweep,
@@ -180,3 +182,43 @@ def test_run_deployed_sweep_bridges_5003_and_writes_evidence(tmp_path):
     assert evidence["result_files"] == ["results/s_params.csv"]
     assert evidence["figure_files"] == ["figures/heatmap.png"]
     assert evidence["model_files"] == []
+
+
+def test_run_deployed_sweep_keeps_failure_evidence(tmp_path):
+    task = build_sweep_tasks({"job_type": "metasurface-sweep", "mode": "real"})[0]
+    task["task_id"] = "task_0001"
+    task["mode"] = "real"
+    session = FakeSession()
+    original_request = session.request
+
+    def request_with_error(method, url, **kwargs):
+        if url.endswith("/sweep/status"):
+            return FakeResponse(
+                {
+                    "ok": True,
+                    "task": {
+                        "status": "error",
+                        "message": "0/4 valid, 4 missing",
+                    },
+                }
+            )
+        return original_request(method, url, **kwargs)
+
+    session.request = request_with_error
+
+    with pytest.raises(RuntimeError, match="0/4 valid, 4 missing"):
+        run_deployed_sweep(
+            task,
+            tmp_path,
+            base_url="http://127.0.0.1:5003",
+            poll_interval=0,
+            timeout_seconds=1,
+            session=session,
+        )
+
+    quality = read_json(tmp_path / "quality_report.json")
+    evidence = read_json(tmp_path / "evidence" / "index.json")
+
+    assert quality["conclusion"] == "fail"
+    assert quality["result_completeness"]["missing_count"] == 4
+    assert evidence["download_policy"]["default_payload"] == "evidence-only"

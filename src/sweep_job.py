@@ -328,4 +328,7 @@ def run_deployed_sweep(
         "model_files": [f"models/{name}" for name in files.get("models", [])],
         **counts,
     }
-    return write_sweep_artifacts(job_dir, task, run_result)
+    outputs = write_sweep_artifacts(job_dir, task, run_result)
+    if run_result["solver_status"] == "error":
+        raise RuntimeError(message or f"Sweep task {remote_task_id} failed.")
+    return outputs
