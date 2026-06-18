@@ -303,3 +303,18 @@
     - 收尾状态：`/status` 返回 `connected=false`，说明短 job 已释放会话
 - 后续：
   - 将旧 sweep/后处理接入持久 job/task，并补质量报告和 evidence-first 结果回传。
+
+## 2026-06-18 - 接入 metasurface sweep job evidence
+
+- 目标：把旧 `5003` Autosweep 的 sweep/后处理能力接到新 `5004` 持久 job/task 状态机，并补质量报告和 evidence-first 回传。
+- 修改：
+  - 新增 `metasurface-sweep` job 类型。
+  - 新增 `src/sweep_job.py`，负责 sweep task 构建、mock artifact、`5003` 桥接、quality report 和 evidence index。
+  - `summary.json` 自动汇入 `quality_report.json` 和 `evidence/index.json`。
+  - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
+- 验证：
+  - 本地执行 `.venv/bin/python -m compileall rpc_server.py src scripts tests`，记录实际输出。
+  - 本地执行 `.venv/bin/python -m pytest -q`，记录实际通过数量。
+  - Windows 同步并重启后，执行 `mock metasurface-sweep` 和短 `real metasurface-sweep` smoke，记录实际 job ID、valid/missing 数量、quality conclusion 和 evidence path。
+- 后续：
+  - 把旧 sweep 内部 sample 映射为逐 task，实现 sample-level resume。

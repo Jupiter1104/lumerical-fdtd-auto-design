@@ -83,7 +83,7 @@
 - `lumapi` 延迟到 `/session/start` 时导入，因此 Mac 可在无 Lumerical 环境运行契约测试。
 - raw v242 没有 `fdtd.getversion()` Python 方法，版本读取通过 script command `getversion` 兼容。
 - raw lumapi `fdtd.close()` 可能在窗口关闭后不返回；`/session/close` 先摘除 RPC 会话，再后台关闭后端，超时返回 `close_state=timed_out`。
-- `/jobs/*` v1 第一版已实现：plan、start、status、tasks、resume；当前真实执行仅限短 `geometry-smoke`，长 sweep 仍走旧 `5003` 或下一阶段接入。
+- `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和 `metasurface-sweep`。真实 `metasurface-sweep` 通过环境变量 `FDTD_SWEEP_RPC_URL` 桥接已部署 `5003` Autosweep baseline。
 - 旧 `/session/stop`、`/sim/*`、`/geom/*` 等路由仅在 Server 端作为弃用别名保留；Client/MCP 只调用 v1。
 - 文件参数限制到 Windows workspace/job root 仍需后续强化；当前通用 model 端点仍需受控网络环境。
 - 通用 `/debug/eval` 仅作为调试入口，不作为默认自然语言建模入口。
@@ -97,7 +97,7 @@
 /debug/*            受审计的 eval/getv/setv 调试入口
 /simulation/*       当前模型的短 smoke 运行和结果读取
 /jobs/plan          创建 planned job，落盘 task 清单但不执行
-/jobs/start         创建并执行 mock 或短 real geometry-smoke job
+/jobs/start         创建并执行 geometry-smoke 或 metasurface-sweep job
 /jobs/<id>          读取 manifest/status/summary
 /jobs/<id>/tasks    读取 task 摘要
 /jobs/<id>/resume   仅重试 pending/failed task

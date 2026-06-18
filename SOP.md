@@ -107,7 +107,7 @@
 5. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
 6. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
-当前 `/jobs/*` v1 第一版已实现：plan、start、status、tasks、resume。真实执行仅限短 `geometry-smoke`，长 sweep 仍走旧 `5003` 或下一阶段接入。
+当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
 
 ## SOP-009 - RPC/MCP 契约变更
 

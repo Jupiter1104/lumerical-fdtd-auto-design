@@ -5,7 +5,7 @@
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
 - Windows 状态：`127.0.0.1:5004` 真实 v1 smoke 全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
-- Job 状态：`/jobs/start` 短 `real geometry-smoke` 已通过，`job_20260618_184622_geometry_smoke` 生成 `jobs\job_20260618_184622_geometry_smoke\models\task_0001.fsp`。
+- Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持 `plan/mock/real` 的 job 形态、质量报告和 evidence index。真实 sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
 - 过渡期：旧 `5003` Autosweep 服务与新 `5004` v1 服务并行；本文件只描述 `5004` v1。
 
 ## Envelope
@@ -58,7 +58,7 @@
 | POST | `/geometry/rectangle` | 添加矩形 |
 | POST | `/geometry/circle` | 添加圆形 |
 | POST | `/jobs/plan` | 创建 planned job，落盘 task 清单但不执行 |
-| POST | `/jobs/start` | 创建并执行 mock 或短 real geometry-smoke job |
+| POST | `/jobs/start` | 创建并执行 mock 或 real job；支持 `geometry-smoke` 和 `metasurface-sweep` |
 | GET | `/jobs/<job_id>` | 读取 manifest/status/summary |
 | GET | `/jobs/<job_id>/tasks` | 读取 task 摘要 |
 | POST | `/jobs/<job_id>/resume` | 仅重试 pending/failed task |
@@ -97,6 +97,6 @@
 
 - `/debug/eval` 仅用于诊断，不是自然语言建模入口。
 - 文件路径越界限制将在持久 job 层实现；当前 v1 服务仅在受控本地/隧道环境使用。
-- 第一版 `/jobs/*` 已实现 plan、start、status、tasks 和 resume；当前只执行 `mock` 和短 `real geometry-smoke`。
-- 完整 sweep、优化、取消、并发队列和质量报告不在本版。
+- `/jobs/*` 已实现 plan、start、status、tasks 和 resume；支持 `geometry-smoke` 和高层 `metasurface-sweep` task。
+- `metasurface-sweep` 首版把整个旧 sweep pipeline 作为一个高层 task；逐 sample resume、取消、并发队列和优化仍是后续工作。
 - 旧 sweep API `/sweep/*`、`/results/*` 属于已部署 Autosweep 扩展；仓库通用 v1 Server 当前不承载完整 sweep 引擎。
