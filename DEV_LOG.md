@@ -293,6 +293,7 @@
   - `rpc_server.py` 增加 `/jobs/plan`、`/jobs/start`、`/jobs/<job_id>`、`/jobs/<job_id>/tasks`、`/jobs/<job_id>/resume`。
   - `RpcClient` 增加 job helper 方法。
 - 验证：
-  - `.venv/bin/python -m pytest -q`：待最终全量验证。
+  - `.venv/bin/python -m compileall rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`81 passed`。
 - 后续：
   - Windows 同步后用短 `real geometry-smoke` 验证 job 目录和 `.fsp` 产物。
