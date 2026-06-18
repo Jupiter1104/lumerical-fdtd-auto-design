@@ -19,6 +19,8 @@ from typing import Any, Optional
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
+from src.job_store import JobError, JobStore
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -366,13 +368,72 @@ def _required(data: dict, key: str):
     return value
 
 
-def create_app(session_manager: Optional[SessionManager] = None) -> Flask:
+def _geometry_smoke_executor(session: SessionManager):
+    def run(task: dict, job_dir: Path) -> dict:
+        hide = bool(task.get("input", {}).get("hide", False))
+        started_here = False
+        if not session.is_connected:
+            session.start(hide=hide)
+            started_here = True
+
+        try:
+            session.addfdtd(
+                dimension="3D",
+                x=0.0,
+                x_span=2e-6,
+                y=0.0,
+                y_span=2e-6,
+                z=0.0,
+                z_span=1e-6,
+                mesh_accuracy=2,
+            )
+            session.addrect(
+                name=f"{task['task_id']}_waveguide",
+                x=0.0,
+                x_span=1e-6,
+                y=0.0,
+                y_span=500e-9,
+                z=0.0,
+                z_span=220e-9,
+                material="Si (Silicon) - Palik",
+            )
+            model_path = job_dir / "models" / f"{task['task_id']}.fsp"
+            saved = session.save(str(model_path))
+            return {
+                "model_file": saved.get("saved_to", str(model_path)),
+                "hide": hide,
+            }
+        finally:
+            if started_here:
+                session.close()
+
+    return run
+
+
+def create_app(
+    session_manager: Optional[SessionManager] = None,
+    job_store: Optional[JobStore] = None,
+) -> Flask:
     """Create a testable Flask app with an injectable session backend."""
     app = Flask(__name__)
     session = session_manager or SessionManager()
+    jobs = job_store or JobStore()
 
     @app.errorhandler(RpcError)
     def handle_rpc_error(error):
+        return (
+            jsonify(
+                _error_payload(
+                    error.error_type,
+                    error.message,
+                    error.details,
+                )
+            ),
+            error.status_code,
+        )
+
+    @app.errorhandler(JobError)
+    def handle_job_error(error):
         return (
             jsonify(
                 _error_payload(
@@ -497,6 +558,38 @@ def create_app(session_manager: Optional[SessionManager] = None) -> Flask:
     @app.post("/geom/addcircle")
     def geometry_circle():
         return _success(session.addcircle(**_json_body()))
+
+    @app.post("/jobs/plan")
+    def jobs_plan():
+        return _success(jobs.plan(_json_body()))
+
+    @app.post("/jobs/start")
+    def jobs_start():
+        data = _json_body()
+        executor = (
+            _geometry_smoke_executor(session)
+            if data.get("mode") == "real"
+            else None
+        )
+        return _success(jobs.start(data, executor=executor))
+
+    @app.get("/jobs/<job_id>")
+    def jobs_get(job_id):
+        return _success(jobs.get(job_id))
+
+    @app.get("/jobs/<job_id>/tasks")
+    def jobs_tasks(job_id):
+        return _success(jobs.list_tasks(job_id))
+
+    @app.post("/jobs/<job_id>/resume")
+    def jobs_resume(job_id):
+        data = _json_body()
+        executor = (
+            _geometry_smoke_executor(session)
+            if data.get("mode") == "real"
+            else None
+        )
+        return _success(jobs.resume(job_id, executor=executor))
 
     return app
 
