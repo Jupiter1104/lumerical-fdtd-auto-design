@@ -4,6 +4,8 @@ import cmath
 import json
 from pathlib import Path
 
+from src.sweep_job import write_job_artifacts
+
 
 def sample_model_path(job_dir: Path, task_id: str) -> Path:
     return job_dir / "models" / f"{task_id}.fsp"
@@ -59,6 +61,14 @@ class NativeSweepRunner:
             self._run_queue(job_id, tasks, fdtd)
         if 3 in sweep["phases"]:
             self._extract_results(job_id, job_dir, tasks, fdtd)
+        if 4 in sweep["phases"]:
+            write_job_artifacts(
+                job_dir,
+                job_id=job_id,
+                expected_count=len(self.store.list_tasks(job_id)["tasks"]),
+                include_models=bool(sweep.get("include_models", False)),
+            )
+        if 3 in sweep["phases"] or 4 in sweep["phases"]:
             return self.store.finalize(job_id)
         return self.store.get(job_id)
 

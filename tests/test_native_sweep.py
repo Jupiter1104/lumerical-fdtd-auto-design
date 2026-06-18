@@ -5,6 +5,10 @@ from src.job_store import JobStore
 from src.native_sweep import NativeSweepRunner
 
 
+def read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 class FakeFdtd:
     def __init__(self):
         self.calls = []
@@ -236,3 +240,23 @@ def test_native_runner_marks_sample_failed_when_s_result_is_missing(
     assert first["state"] == "succeeded"
     assert second["state"] == "failed"
     assert second["error"]["message"] == "Missing S result."
+
+
+def test_native_runner_phase_four_writes_evidence_artifacts(tmp_path):
+    store, job = create_real_job(tmp_path, phases=[1, 2, 3, 4])
+
+    result = NativeSweepRunner(FakeSession(FakeFdtd()), store).run(job["job_id"])
+
+    job_dir = Path(job["job_dir"])
+    assert result["state"] == "succeeded"
+    assert (job_dir / "results" / "sweep_results.csv").is_file()
+    assert (job_dir / "results" / "sweep_summary.json").is_file()
+    assert (job_dir / "quality_report.json").is_file()
+    assert (job_dir / "evidence" / "index.json").is_file()
+    assert (job_dir / "evidence" / "transmission_heatmap.svg").is_file()
+    assert (job_dir / "evidence" / "phase_heatmap.svg").is_file()
+    summary = read_json(job_dir / "summary.json")
+    assert summary["quality_report"]["conclusion"] == "pass"
+    assert summary["evidence"]["download_policy"]["default_payload"] == (
+        "evidence-only"
+    )
