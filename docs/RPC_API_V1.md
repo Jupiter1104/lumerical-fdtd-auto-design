@@ -4,7 +4,7 @@
 
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
-- Windows 状态：`127.0.0.1:5004` 已完成真实 v1 smoke 和真实 2×2 原生 `metasurface-sweep` 验证；新服务默认端口切换为 `5000`。
+- Windows 状态：开发期 `5004` 已完成真实 v1 smoke 和真实 2×2 原生 `metasurface-sweep` 验证；当前默认端口为 `5000`，Windows 已同步并完成 health/mock smoke。
 - Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持逐 sample task、原生 Phase 1-4、质量报告和 evidence index。真实 sweep 在新 v1 服务内异步执行，启动成功返回 HTTP 202。每个真实 sweep manifest 记录模板路径、大小、mtime 和 SHA-256。
 - 过渡期：旧 Autosweep 只作为历史 baseline，不再是仓库内 `rpc_server.py` 的运行时依赖；本文件只描述新 v1 服务。
 

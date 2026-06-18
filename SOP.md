@@ -140,5 +140,5 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5000
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m compileall -q rpc_server.py src scripts tests
-.venv/bin/python -m pytest -q  # 当前 112 项
+.venv/bin/python -m pytest -q  # 当前 114 passed
 ```

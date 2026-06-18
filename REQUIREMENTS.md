@@ -64,7 +64,7 @@
 
 ## 开放问题
 
-- 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过；真实 2×2 原生 `metasurface-sweep` 已在 `5004` 通过，后续默认服务端口切换为 `5000`。
+- 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过；真实 2×2 原生 `metasurface-sweep` 已在 `5004` 通过；新 v1 服务默认端口已切换为 `5000`，Windows 同步后 health/mock smoke 通过。
 - 问题：通用 `/debug/eval` 是否仅作为受审计的调试工具保留，默认自然语言建模改走 typed recipe/builder？
 - 问题：`SimulationPlan` 的最小 schema 如何覆盖 FDTD/FDE/EME，同时避免首版过度抽象？
 - 问题：MCP Server 何时接入 Claude Code？

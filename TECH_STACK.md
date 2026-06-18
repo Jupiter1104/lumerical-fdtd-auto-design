@@ -23,10 +23,10 @@
 │  Windows (仿真端)                                                         │
 │             ▼                                                            │
 │  ┌──────────────────────────┐                                            │
-│  │  rpc_server.py (常驻)    │  ← 超表面扫参流水线                        │
-│  │  - Flask HTTP API        │                                            │
-│  │  - 4 阶段扫参引擎         │                                            │
-│  │  - MATLAB Engine 后处理   │                                            │
+│  │  rpc_server.py (常驻)    │  ← 超表面扫参 + 通用建模 API                │
+│  │  - Flask HTTP API v1     │                                            │
+│  │  - 4 阶段原生扫参引擎      │                                            │
+│  │  - 标准库 CSV/JSON/SVG    │                                            │
 │  │  - GUI/headless 双模式    │                                            │
 │  └──────────┬───────────────┘                                            │
 │             │  lumapi (v242 raw API)                                     │
