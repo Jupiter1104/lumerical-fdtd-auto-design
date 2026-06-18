@@ -219,3 +219,38 @@ def test_jobs_start_real_metasurface_sweep_uses_deployed_bridge(
     assert payload["summary"]["quality_report"]["conclusion"] == "pass"
     assert calls[0]["base_url"] == "http://127.0.0.1:5999"
     assert calls[0]["task"]["operation"] == "metasurface-sweep"
+
+
+def test_real_metasurface_sweep_defaults_to_port_5005(
+    server_module,
+    fake_session,
+    tmp_path,
+    monkeypatch,
+):
+    calls = []
+
+    def fake_run_deployed_sweep(task, job_dir, base_url):
+        calls.append(base_url)
+        return {"remote_task_id": "sweep_fake"}
+
+    monkeypatch.delenv("FDTD_SWEEP_RPC_URL", raising=False)
+    monkeypatch.setattr(
+        server_module,
+        "run_deployed_sweep",
+        fake_run_deployed_sweep,
+    )
+
+    executor = server_module._job_executor(
+        {"mode": "real", "job_type": "metasurface-sweep"},
+        fake_session,
+    )
+    executor(
+        {
+            "task_id": "task_0001",
+            "operation": "metasurface-sweep",
+            "input": {},
+        },
+        tmp_path,
+    )
+
+    assert calls == ["http://127.0.0.1:5005"]

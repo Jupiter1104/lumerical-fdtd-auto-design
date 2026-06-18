@@ -1,7 +1,7 @@
 """Metasurface sweep job helpers.
 
 This module is pure Python and safe to import on Mac. Real solver work is
-delegated to the already-deployed sweep RPC service on Windows port 5003.
+delegated to the already-deployed sweep RPC service configured by URL.
 """
 
 import json

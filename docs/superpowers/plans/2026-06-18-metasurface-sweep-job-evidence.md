@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `metasurface-sweep` to the persistent `/jobs/*` state machine, bridge real execution to the deployed `5003` sweep baseline, and write `quality_report.json` plus evidence-first indexes.
+**Goal:** Add `metasurface-sweep` to the persistent `/jobs/*` state machine, bridge real execution to the deployed `5005` sweep baseline, and write `quality_report.json` plus evidence-first indexes.
 
-**Architecture:** Keep `JobStore` as the persistence owner. Add a focused `src/sweep_job.py` module for sweep request normalization, mock artifacts, deployed `5003` bridge execution, quality report generation, and evidence indexing. `rpc_server.py` only selects the correct executor; it does not contain sweep business logic.
+**Architecture:** Keep `JobStore` as the persistence owner. Add a focused `src/sweep_job.py` module for sweep request normalization, mock artifacts, deployed `5005` bridge execution, quality report generation, and evidence indexing. `rpc_server.py` only selects the correct executor; it does not contain sweep business logic.
 
-**Tech Stack:** Python 3.9-compatible code, Flask API v1, `requests` for the local `5003` bridge, pytest offline tests, Windows v242 raw lumapi remains isolated behind the existing deployed sweep service.
+**Tech Stack:** Python 3.9-compatible code, Flask API v1, `requests` for the local `5005` bridge, pytest offline tests, Windows v242 raw lumapi remains isolated behind the existing deployed sweep service.
 
 ---
 
@@ -20,11 +20,11 @@
   - Normalize sweep request fields.
   - Build one high-level sweep task.
   - Run mock sweep and write artifacts.
-  - Bridge real sweep to deployed `5003` via HTTP.
+  - Bridge real sweep to deployed `5005` via HTTP.
   - Generate `quality_report.json`, `results/sweep_summary.json`, and `evidence/index.json`.
 - Modify `rpc_server.py`
   - Select `geometry-smoke`, mock sweep, or real deployed sweep executor.
-  - Read deployed sweep URL from `FDTD_SWEEP_RPC_URL`, default `http://127.0.0.1:5003`.
+  - Read deployed sweep URL from `FDTD_SWEEP_RPC_URL`, default `http://127.0.0.1:5005`.
 - Modify `requirements-dev.txt`
   - Ensure `requests` remains available for tests and bridge code.
 - Modify tests:
@@ -189,7 +189,7 @@ Create `src/sweep_job.py`:
 """Metasurface sweep job helpers.
 
 This module is pure Python and safe to import on Mac. Real solver work is
-delegated to the already-deployed sweep RPC service on Windows port 5003.
+delegated to the already-deployed sweep RPC service configured by URL.
 """
 
 import json
@@ -749,7 +749,7 @@ def _job_executor(data: dict, session: SessionManager):
         return _geometry_smoke_executor(session)
     if data.get("job_type") == "metasurface-sweep":
         return _metasurface_sweep_executor(
-            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5003")
+            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5005")
         )
     return None
 ```
@@ -838,7 +838,7 @@ class FakeSession:
         raise AssertionError(url)
 
 
-def test_run_deployed_sweep_bridges_5003_and_writes_evidence(tmp_path):
+def test_run_deployed_sweep_bridges_5005_and_writes_evidence(tmp_path):
     task = build_sweep_tasks({"job_type": "metasurface-sweep", "mode": "real"})[0]
     task["task_id"] = "task_0001"
     task["mode"] = "real"
@@ -847,7 +847,7 @@ def test_run_deployed_sweep_bridges_5003_and_writes_evidence(tmp_path):
     outputs = run_deployed_sweep(
         task,
         tmp_path,
-        base_url="http://127.0.0.1:5003",
+        base_url="http://127.0.0.1:5005",
         poll_interval=0,
         timeout_seconds=1,
         session=session,
@@ -906,7 +906,7 @@ git commit -m "test: cover deployed sweep bridge"
 In `README.md`, change current status to say:
 
 ```md
-- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已加载 close detach/timeout 修复和持久 `/jobs/*`。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 job/task、quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` sweep baseline。
+- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已加载 close detach/timeout 修复和持久 `/jobs/*`。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 job/task、quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` sweep baseline。
 ```
 
 - [ ] **Step 2: Update RPC API doc**
@@ -914,7 +914,7 @@ In `README.md`, change current status to say:
 In `docs/RPC_API_V1.md`, update the job status bullets:
 
 ```md
-- Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持 `plan/mock/real` 的 job 形态、质量报告和 evidence index。真实 sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
+- Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持 `plan/mock/real` 的 job 形态、质量报告和 evidence index。真实 sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。
 ```
 
 Update `/jobs/start` row:
@@ -934,13 +934,13 @@ Update known limits:
 In `TECH_STACK.md`, update the `/jobs/*` bullet:
 
 ```md
-- `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和 `metasurface-sweep`。真实 `metasurface-sweep` 通过环境变量 `FDTD_SWEEP_RPC_URL` 桥接已部署 `5003` Autosweep baseline。
+- `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和 `metasurface-sweep`。真实 `metasurface-sweep` 通过环境变量 `FDTD_SWEEP_RPC_URL` 桥接已部署 `5005` Autosweep baseline。
 ```
 
 In `SOP.md`, replace the stale line at the end of SOP-008 with:
 
 ```md
-当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
+当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
 ```
 
 - [ ] **Step 4: Append DEV_LOG entry**
@@ -950,12 +950,12 @@ Append to `DEV_LOG.md`:
 ```md
 ## 2026-06-18 - 接入 metasurface sweep job evidence
 
-- 目标：把旧 `5003` Autosweep 的 sweep/后处理能力接到新 `5004` 持久 job/task 状态机，并补质量报告和 evidence-first 回传。
+- 目标：把旧 `5005` Autosweep 的 sweep/后处理能力接到新 `5004` 持久 job/task 状态机，并补质量报告和 evidence-first 回传。
 - 修改：
   - 新增 `metasurface-sweep` job 类型。
-  - 新增 `src/sweep_job.py`，负责 sweep task 构建、mock artifact、`5003` 桥接、quality report 和 evidence index。
+  - 新增 `src/sweep_job.py`，负责 sweep task 构建、mock artifact、`5005` 桥接、quality report 和 evidence index。
   - `summary.json` 自动汇入 `quality_report.json` 和 `evidence/index.json`。
-  - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
+  - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。
 - 验证：
   - 本地执行 `.venv/bin/python -m compileall rpc_server.py src scripts tests`，记录实际输出。
   - 本地执行 `.venv/bin/python -m pytest -q`，记录实际通过数量。
@@ -1054,7 +1054,7 @@ Expected: Windows HEAD matches Mac HEAD.
 Say:
 
 ```text
-请在 Windows 上双击 `F:\lumerical-fdtd-auto-design\fdtd-auto-design\scripts\windows\restart_rpc.bat`，让 5004 加载新代码。旧 5003 sweep baseline 也需要保持运行。
+请在 Windows 上双击 `F:\lumerical-fdtd-auto-design\fdtd-auto-design\scripts\windows\restart_rpc.bat`，让 5004 加载新代码。旧 5005 sweep baseline 也需要保持运行。
 ```
 
 Wait for the user to confirm they clicked.
@@ -1064,13 +1064,13 @@ Wait for the user to confirm they clicked.
 Run:
 
 ```bash
-ssh -o BatchMode=yes 32482@192.168.31.26 'curl -sS --max-time 5 http://127.0.0.1:5004/health && echo && curl -sS --max-time 5 http://127.0.0.1:5003/health && echo'
+ssh -o BatchMode=yes 32482@192.168.31.26 'curl -sS --max-time 5 http://127.0.0.1:5004/health && echo && curl -sS --max-time 5 http://127.0.0.1:5005/health && echo'
 ```
 
 Expected:
 
 - `5004` returns API v1 health.
-- `5003` returns old sweep health with `ok=true`.
+- `5005` returns old sweep health with `ok=true`.
 
 - [ ] **Step 4: Run mock sweep job on `5004`**
 
@@ -1092,7 +1092,7 @@ ssh -o BatchMode=yes 32482@192.168.31.26 'cd /f/lumerical-fdtd-auto-design/fdtd-
 
 Expected:
 
-- response status state is `succeeded`, or if old `5003` reports missing samples, `partial/failed` with task error and quality report.
+- response status state is `succeeded`, or if old `5005` reports missing samples, `partial/failed` with task error and quality report.
 - `jobs/<job_id>/quality_report.json` exists.
 - `jobs/<job_id>/evidence/index.json` exists.
 - default response does not include model bytes.
@@ -1118,7 +1118,7 @@ Expected: Mac, GitHub, and Windows clone are aligned.
   - `metasurface-sweep` job type: Task 3.
   - quality report: Tasks 1, 2, 3, 6.
   - evidence-first index: Tasks 1, 2, 3, 6.
-  - `5003` bridge: Tasks 4, 5, 8.
+  - `5005` bridge: Tasks 4, 5, 8.
   - approval gate: existing JobStore behavior plus Task 4 tests.
   - docs and Windows verification: Tasks 6, 8.
 - Placeholder scan:

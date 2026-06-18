@@ -59,7 +59,7 @@
 - **MATLAB**：R2024b Engine 已集成，Phase 4 后处理用。
 - **运行模式**：headless (`hide=True`) 为生产默认；GUI (`hide=False`) 仅在 RDP 连接时可用。
 - 用户看 Windows 屏幕的方式：远程桌面（RDP）为主。
-- 通信方式：SSH 隧道（`ssh -L 5003:localhost:5003`）或局域网直连。
+- 通信方式：SSH 隧道（旧 sweep 使用 `ssh -L 5005:localhost:5005`，新 job 服务使用 `5004`）或局域网直连。
 - 结果回传：HTTP `/results/<path>` 下载，已验证可用。
 
 ## 开放问题

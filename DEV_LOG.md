@@ -306,15 +306,22 @@
 
 ## 2026-06-18 - 接入 metasurface sweep job evidence
 
-- 目标：把旧 `5003` Autosweep 的 sweep/后处理能力接到新 `5004` 持久 job/task 状态机，并补质量报告和 evidence-first 回传。
+- 目标：把旧 Autosweep 的 sweep/后处理能力接到新 `5004` 持久 job/task 状态机，并补质量报告和 evidence-first 回传。
 - 修改：
   - 新增 `metasurface-sweep` job 类型。
-  - 新增 `src/sweep_job.py`，负责 sweep task 构建、mock artifact、`5003` 桥接、quality report 和 evidence index。
+  - 新增 `src/sweep_job.py`，负责 sweep task 构建、mock artifact、旧 Autosweep bridge、quality report 和 evidence index。
   - `summary.json` 自动汇入 `quality_report.json` 和 `evidence/index.json`。
-  - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
+  - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 Autosweep baseline；当前部署端口为 `5005`。
 - 验证：
   - `.venv/bin/python -m compileall rpc_server.py src scripts tests`：通过。
-  - `.venv/bin/python -m pytest -q`：`91 passed in 14.79s`。
-  - Windows 待同步并重启后验证 `mock metasurface-sweep` 和短 `real metasurface-sweep` smoke。
+  - `.venv/bin/python -m pytest -q`：`92 passed in 14.81s`。
+  - Windows `mock metasurface-sweep` 通过：
+    - `job_id`: `job_20260618_201618_metasurface_sweep`
+    - `state`: `succeeded`
+    - result completeness：`4 valid / 0 missing`
+    - quality conclusion：`pass`
+    - evidence policy：`evidence-only`，不包含逐点模型
+  - 旧 Autosweep 实际部署端口已由 `5003` 调整为 `5005`；`5004` 和 `5005` health 均通过。
+  - Windows 待加载端口修正后验证短 `real metasurface-sweep` smoke。
 - 后续：
   - 把旧 sweep 内部 sample 映射为逐 task，实现 sample-level resume。

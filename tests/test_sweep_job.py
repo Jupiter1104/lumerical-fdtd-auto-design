@@ -159,7 +159,7 @@ class FakeSession:
         raise AssertionError(url)
 
 
-def test_run_deployed_sweep_bridges_5003_and_writes_evidence(tmp_path):
+def test_run_deployed_sweep_bridges_5005_and_writes_evidence(tmp_path):
     task = build_sweep_tasks({"job_type": "metasurface-sweep", "mode": "real"})[0]
     task["task_id"] = "task_0001"
     task["mode"] = "real"
@@ -168,7 +168,7 @@ def test_run_deployed_sweep_bridges_5003_and_writes_evidence(tmp_path):
     outputs = run_deployed_sweep(
         task,
         tmp_path,
-        base_url="http://127.0.0.1:5003",
+        base_url="http://127.0.0.1:5005",
         poll_interval=0,
         timeout_seconds=1,
         session=session,

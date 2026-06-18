@@ -44,13 +44,13 @@
    ```
 3. 建立 SSH 隧道（推荐）或直连：
    ```bash
-   ssh -L 5003:localhost:5003 32482@192.168.31.26
+   ssh -L 5005:localhost:5005 32482@192.168.31.26
    ssh -L 5004:localhost:5004 32482@192.168.31.26
-   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5003
+   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5005
    ```
 4. 验证连接：
    ```bash
-   curl http://localhost:5003/health
+   curl http://localhost:5005/health
    ```
 
 ## SOP-004 - 端到端验证
@@ -59,7 +59,7 @@
 2. Session 已启动（`fdtd_connected=true`）。
 3. Mac 端运行 smoke test：
    ```bash
-   python scripts/smoke_test.py --rpc http://localhost:5003
+   python scripts/smoke_test.py --rpc http://localhost:5005
    ```
 4. 预期：4/4 valid, 0 missing。
 
@@ -80,7 +80,7 @@
 3. RPC Server `_run_pipeline` 内：
    - `fdtd.clearjobs()` 在 Phase 1 循环前
    - `fdtd.setnamed("FDTD", "express mode", 1)` 在每次 `load()` 后 `save()` 前
-4. 端口未被幽灵进程占用（`netstat -ano | findstr 5003`）。
+4. 端口未被幽灵进程占用（`netstat -ano | findstr 5005`）。
 
 ## SOP-006 - 交付
 
@@ -107,7 +107,7 @@
 5. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
 6. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
-当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
+当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
 
 ## SOP-009 - RPC/MCP 契约变更
 

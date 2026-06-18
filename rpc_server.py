@@ -425,7 +425,7 @@ def _job_executor(data: dict, session: SessionManager):
         return _geometry_smoke_executor(session)
     if data.get("job_type") == "metasurface-sweep":
         return _metasurface_sweep_executor(
-            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5003")
+            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5005")
         )
     return None
 

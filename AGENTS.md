@@ -93,16 +93,16 @@ curl http://127.0.0.1:5004/health
 # === Mac 端 ===
 
 # 4. 建立 SSH 隧道（按目标选择）
-ssh -L 5003:localhost:5003 32482@192.168.31.26
+ssh -L 5005:localhost:5005 32482@192.168.31.26
 ssh -L 5004:localhost:5004 32482@192.168.31.26
 
 # 5. 旧 sweep smoke test
-python scripts/smoke_test.py --rpc http://localhost:5003
+python scripts/smoke_test.py --rpc http://localhost:5005
 
 # 5b. 新 v1 smoke test
 python scripts/v1_smoke_test.py --rpc http://localhost:5004
 
 # 6. 启动 MCP Server（供 Claude Code 调用）
-# 旧 sweep 工具指向 5003；通用 v1 session/model/geometry/debug 指向 5004。
-FDTD_RPC_URL=http://localhost:5003 python -m src.server
+# 旧 sweep 工具指向 5005；通用 v1 session/model/geometry/debug 指向 5004。
+FDTD_RPC_URL=http://localhost:5005 python -m src.server
 ```

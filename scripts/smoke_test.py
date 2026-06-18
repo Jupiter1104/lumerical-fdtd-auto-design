@@ -12,11 +12,11 @@ Tests the actual Windows RPC API (metasurface sweep pipeline):
 
 Usage:
     # Direct (same LAN):
-    python scripts/smoke_test.py --rpc http://192.168.31.26:5001
+    python scripts/smoke_test.py --rpc http://192.168.31.26:5005
 
     # Via SSH tunnel:
-    ssh -L 5001:localhost:5001 32482@192.168.31.26
-    python scripts/smoke_test.py --rpc http://localhost:5001
+    ssh -L 5005:localhost:5005 32482@192.168.31.26
+    python scripts/smoke_test.py --rpc http://localhost:5005
 """
 
 import argparse
@@ -42,7 +42,7 @@ def log(step: str, result: dict) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="FDTD Smoke Test")
-    parser.add_argument("--rpc", default="http://localhost:5002", help="RPC server URL")
+    parser.add_argument("--rpc", default="http://localhost:5005", help="RPC server URL")
     parser.add_argument("--full", action="store_true", help="Run full sweep (slow)")
     parser.add_argument("--headless", action="store_true", help="Start FDTD in headless mode (hide=True)")
     parser.add_argument("--pause", type=float, default=0, help="Pause N seconds for GUI inspection before sweep")
