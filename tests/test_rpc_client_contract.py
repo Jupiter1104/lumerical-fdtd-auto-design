@@ -117,6 +117,17 @@ def fake_http_server():
             "/geometry/circle",
             {"name": "ring"},
         ),
+        ("jobs_plan", ({"mode": "mock"},), "POST", "/jobs/plan", {"mode": "mock"}),
+        ("jobs_start", ({"mode": "mock"},), "POST", "/jobs/start", {"mode": "mock"}),
+        ("jobs_get", ("job_1",), "GET", "/jobs/job_1", None),
+        ("jobs_tasks", ("job_1",), "GET", "/jobs/job_1/tasks", None),
+        (
+            "jobs_resume",
+            ("job_1", {"mode": "mock"}),
+            "POST",
+            "/jobs/job_1/resume",
+            {"mode": "mock"},
+        ),
     ],
 )
 def test_client_uses_v1_routes(

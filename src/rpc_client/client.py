@@ -184,6 +184,26 @@ class RpcClient:
             self._properties(properties, kwargs),
         )
 
+    # Persistent jobs
+
+    def jobs_plan(self, request: dict) -> dict:
+        return self._post("/jobs/plan", request)
+
+    def jobs_start(self, request: dict) -> dict:
+        return self._post("/jobs/start", request)
+
+    def jobs_get(self, job_id: str) -> dict:
+        return self._get(f"/jobs/{quote(job_id, safe='')}")
+
+    def jobs_tasks(self, job_id: str) -> dict:
+        return self._get(f"/jobs/{quote(job_id, safe='')}/tasks")
+
+    def jobs_resume(self, job_id: str, request: Optional[dict] = None) -> dict:
+        return self._post(
+            f"/jobs/{quote(job_id, safe='')}/resume",
+            request or {},
+        )
+
     # Deployed sweep server extensions
 
     def sweep_config_get(self) -> dict:
