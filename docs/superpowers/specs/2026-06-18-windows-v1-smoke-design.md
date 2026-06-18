@@ -27,6 +27,7 @@ scripts/windows/stop_rpc.bat
 scripts/windows/restart_rpc.bat
 scripts/windows/status_rpc.bat
 scripts/windows/update_and_restart.bat
+scripts/windows/manage_rpc.ps1
 ```
 
 共同约定：
@@ -39,7 +40,7 @@ scripts/windows/update_and_restart.bat
 - 启动前检查 Python、项目文件和端口。
 - 启动后轮询 `/health`；健康检查失败则返回非零退出码并显示日志路径。
 
-`start_rpc.bat` 使用 PowerShell `Start-Process -PassThru` 启动后台进程并记录 PID，避免 SSH 非交互环境中 `start /MIN` 的已知问题。脚本只面向 Windows 本地交互执行。
+`.bat` 文件只作为双击入口，进程管理集中在 `manage_rpc.ps1`。PowerShell 使用 `Start-Process -PassThru` 启动后台进程并记录 PID，避免 CMD 与 PowerShell 混合转义及 SSH 非交互环境中 `start /MIN` 的已知问题。脚本只面向 Windows 本地交互执行。
 
 `update_and_restart.bat` 仅在工作树干净时执行 `git pull --ff-only`，随后调用 restart；发现本地修改时拒绝更新，避免覆盖 Windows 现场文件。
 
