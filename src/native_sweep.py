@@ -148,7 +148,10 @@ class NativeSweepRunner:
                 phase="extracting",
             )
             try:
-                model_path = sample_model_path(job_dir, task_id).resolve()
+                model_path = Path(
+                    task.get("outputs", {}).get("model_file")
+                    or sample_model_path(job_dir, task_id)
+                ).resolve()
                 fdtd.load(str(model_path))
                 fdtd.runanalysis("::model::s_params")
                 if not fdtd.haveresult("::model::s_params", "T"):

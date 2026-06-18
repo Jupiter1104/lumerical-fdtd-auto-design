@@ -77,6 +77,19 @@ class FailingSecondResultFdtd(FakeFdtd):
         return super().getresult(name, result)
 
 
+class MissingSecondSResultFdtd(FakeFdtd):
+    def __init__(self):
+        super().__init__()
+        self.s_result_checks = 0
+
+    def haveresult(self, name, result):
+        self.calls.append(("haveresult", name, result))
+        if result == "S":
+            self.s_result_checks += 1
+            return self.s_result_checks != 2
+        return True
+
+
 def create_real_job(tmp_path, phases=None):
     template = tmp_path / "templates" / "base_model.fsp"
     template.parent.mkdir(parents=True)
@@ -189,3 +202,37 @@ def test_native_runner_keeps_successful_result_when_another_sample_fails(
     assert second["state"] == "failed"
     assert second["phase"] == "extracting"
     assert second["error"]["message"] == "sample extraction failed"
+
+
+def test_native_runner_extracts_from_recorded_model_file(tmp_path):
+    store, job = create_real_job(tmp_path, phases=[3])
+    custom_model = tmp_path / "custom_models" / "task_0001.fsp"
+    custom_model.parent.mkdir()
+    custom_model.write_bytes(b"fsp")
+    store.update_task(
+        job["job_id"],
+        "task_0001",
+        outputs={"model_file": str(custom_model)},
+    )
+    fdtd = FakeFdtd()
+
+    NativeSweepRunner(FakeSession(fdtd), store).run(job["job_id"])
+
+    assert ("load", str(custom_model)) in fdtd.calls
+
+
+def test_native_runner_marks_sample_failed_when_s_result_is_missing(
+    tmp_path,
+):
+    store, job = create_real_job(tmp_path, phases=[1, 2, 3])
+
+    result = NativeSweepRunner(
+        FakeSession(MissingSecondSResultFdtd()),
+        store,
+    ).run(job["job_id"])
+
+    assert result["state"] == "partial"
+    first, second = store.list_tasks(job["job_id"])["tasks"]
+    assert first["state"] == "succeeded"
+    assert second["state"] == "failed"
+    assert second["error"]["message"] == "Missing S result."
