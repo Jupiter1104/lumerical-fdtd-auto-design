@@ -84,6 +84,7 @@
 - raw v242 没有 `fdtd.getversion()` Python 方法，版本读取通过 script command `getversion` 兼容。
 - raw lumapi `fdtd.close()` 可能在窗口关闭后不返回；`/session/close` 先摘除 RPC 会话，再后台关闭后端，超时返回 `close_state=timed_out`。
 - `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和逐 sample `metasurface-sweep`。真实 `metasurface-sweep` 由新服务内的 `NativeSweepRunner` 异步执行。
+- metasurface 模板通过 `scripts\windows\install_metasurface_template.bat` 安装到 `templates\metasurface\base_model.fsp`；每个真实 sweep 的 `manifest.json` 记录模板绝对路径、大小、mtime 和 SHA-256。
 - 旧 `/session/stop`、`/sim/*`、`/geom/*` 等路由仅在 Server 端作为弃用别名保留；Client/MCP 只调用 v1。
 - 文件参数限制到 Windows workspace/job root 仍需后续强化；当前通用 model 端点仍需受控网络环境。
 - 通用 `/debug/eval` 仅作为调试入口，不作为默认自然语言建模入口。
@@ -217,6 +218,9 @@ F:\Program Files\Lumerical\v242\python\python.exe -m pip install flask numpy sci
 
 # 新 v1 服务：Windows 本地双击或命令行
 scripts\windows\restart_rpc.bat
+
+# 安装 metasurface 模板（一次性数据迁移；不是运行时旧项目依赖）
+scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
 
 # 新 v1 smoke：不求解，只打开 GUI、建最小模型、保存 .fsp、关闭
 F:\Program Files\Lumerical\v242\python\python.exe scripts\v1_smoke_test.py

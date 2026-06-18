@@ -35,6 +35,17 @@
    ```
 5. 如需同步代码，优先用 `git pull --ff-only`；若代理正常且工作树干净，可运行 `scripts\windows\update_and_restart.bat`。
 
+## SOP-002b - 安装 metasurface 模板
+
+1. 首次运行真实 `metasurface-sweep` 前，在 Windows 项目目录执行：
+   ```cmd
+   cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+   scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
+   ```
+2. 预期输出包含目标路径、字节数和 SHA-256。
+3. 这是一次性模板迁移，不是运行时旧 Autosweep 依赖；之后新服务只读取 `templates\metasurface\base_model.fsp`。
+4. `.fsp` 被 Git 忽略，不要提交模板二进制。
+
 ## SOP-003 - Mac 端环境搭建
 
 1. 确保 Python 3.10+ 可用。
@@ -55,7 +66,7 @@
 ## SOP-004 - 原生 metasurface sweep 端到端验证
 
 1. 确保 Windows RPC Server 正在运行。
-2. 确认 `templates/metasurface/base_model.fsp` 已安装。
+2. 确认 `templates/metasurface/base_model.fsp` 已按 SOP-002b 安装。
 3. 先走 mock 或 plan；真实运行前必须获得审批摘要确认。
 4. Mac 端通过 `/jobs/start` 启动 `real metasurface-sweep`，预期 HTTP 202 返回 `job_id`。
 5. 轮询 `/jobs/<job_id>` 和 `/jobs/<job_id>/tasks`，完成后检查 quality/evidence。
@@ -80,10 +91,11 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5004
 
 1. `base_model.fsp` 模板完好，含 `::model::s_params` 分析组。
 2. 模板参数 `ratio`、`height`、`period` 已定义。
-3. `NativeSweepRunner` 内：
+3. `manifest.json` 会记录模板 `path`、`sha256`、`size_bytes` 和 `modified_at`；如果模板指纹变化，应创建新 job，不要静默 resume 旧 job。
+4. `NativeSweepRunner` 内：
    - `fdtd.clearjobs()` 在 Phase 1 循环前
    - `fdtd.setnamed("FDTD", "express mode", 1)` 在每次 `load()` 后 `save()` 前
-4. 端口未被幽灵进程占用（`netstat -ano | findstr 5004`）。
+5. 端口未被幽灵进程占用（`netstat -ano | findstr 5004`）。
 
 ## SOP-006 - 交付
 
@@ -106,9 +118,10 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5004
 1. 每个 job 创建独立目录，复制或记录输入 config、模板和代码版本。
 2. 每个 task 写独立 JSON，至少包含 ID、参数、状态、模型路径、开始/结束时间、错误和结果路径。
 3. 失败时先读取 `status.json`、`summary.json` 和短 `run.log` 尾部，不先下载全量模型。
-4. 临时 session/IO 错误允许原参数重试一次；物理参数、mesh、boundary 或 scheduler 变化必须形成新 revision。
-5. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
-6. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
+4. 服务重启时，残留 `running` job 会转为 `partial`，残留 `running` task 会转为 `failed/interrupted`；不会自动重新求解。
+5. 临时 session/IO 错误允许原参数重试一次；物理参数、mesh、boundary、scheduler 或模板指纹变化必须形成新 job/revision。
+6. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
+7. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
 当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入逐 sample task、原生 Phase 1-4、quality report 和 evidence index。真实 sweep 由 `/jobs/start` 异步返回 `202 + job_id`。
 
@@ -126,5 +139,5 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5004
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m compileall -q rpc_server.py src scripts tests
-.venv/bin/python -m pytest -q  # 当前 65 项
+.venv/bin/python -m pytest -q  # 当前 112 项
 ```

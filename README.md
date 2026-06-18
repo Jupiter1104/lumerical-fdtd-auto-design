@@ -29,6 +29,7 @@
 - `RETROSPECTIVE.md`：复盘记录和可复用经验。
 - `docs/RPC_API_V1.md`：API v1 路由、错误语义和兼容别名。
 - `docs/WINDOWS_RUNBOOK.md`：Windows 本地启动、同步、smoke 与故障排查。
+- `templates/metasurface/README.md`：原生 metasurface sweep 模板安装与结构要求。
 
 ## 目标操作链
 

@@ -90,19 +90,17 @@ scripts\windows\restart_rpc.bat
 # 3. 本地验证
 curl http://127.0.0.1:5004/health
 
+# 3b. 首次真实 sweep 前安装 metasurface 模板
+scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
+
 # === Mac 端 ===
 
-# 4. 建立 SSH 隧道（按目标选择）
-ssh -L 5005:localhost:5005 32482@192.168.31.26
+# 4. 建立 SSH 隧道
 ssh -L 5004:localhost:5004 32482@192.168.31.26
 
-# 5. 旧 sweep smoke test
-python scripts/smoke_test.py --rpc http://localhost:5005
-
-# 5b. 新 v1 smoke test
+# 5. 新 v1 smoke test
 python scripts/v1_smoke_test.py --rpc http://localhost:5004
 
 # 6. 启动 MCP Server（供 Claude Code 调用）
-# 旧 sweep 工具指向 5005；通用 v1 session/model/geometry/debug 指向 5004。
-FDTD_RPC_URL=http://localhost:5005 python -m src.server
+FDTD_RPC_URL=http://localhost:5004 python -m src.server
 ```

@@ -386,3 +386,17 @@
   - Mac 本机无 `pwsh`/`powershell`，安装脚本需在 Windows 同步后真实验证。
 - 后续：
   - Windows 安装模板、重启 `5004`，执行真实 2×2 原生 sweep 验证。
+
+## 2026-06-18 - 文档切换到原生异步 sweep 口径
+
+- 目标：让 README、SOP、API 文档和运维手册都反映当前事实：新项目不再通过旧 Autosweep bridge 执行真实 sweep。
+- 背景：
+  - 旧 bridge 真实 job `job_20260618_202255_metasurface_sweep` 暴露旧 lumapi stale-session / 启动健康检查问题。
+  - 架构决策：不继续修旧 RPC，把 sweep 迁入新 `5004` v1 服务，由 `NativeSweepRunner` 原生执行。
+- 修改：
+  - `AGENTS.md`、`REQUIREMENTS.md`、`TECH_STACK.md`、`SOP.md`、`docs/RPC_API_V1.md`、`docs/WINDOWS_RUNBOOK.md` 和 `README.md` 更新为原生逐 sample sweep、HTTP 202 异步启动、模板安装和 manifest 指纹口径。
+  - `PITFALLS.md` 记录“历史 Autosweep baseline 不应作为当前运行依赖”。
+- 验证：
+  - 文档检查确认当前运行入口不再要求 `5005` / `FDTD_SWEEP_RPC_URL`。
+- 注意：
+  - 目前只完成离线和文档切换；尚未声明真实原生 2×2 sweep 已通过。

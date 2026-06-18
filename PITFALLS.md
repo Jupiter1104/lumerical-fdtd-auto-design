@@ -150,3 +150,10 @@
 - 根因：把“诊断建议”和“执行下一轮”合成一个动作。
 - 修复：只生成结构化 next-run 建议，列出原因、配置差异、新任务数和审批要求。
 - 预防：任何扩大参数空间、改变物理设置或新增真实求解都必须形成新 plan 和新审批。
+
+## 2026-06-18 - 把历史 Autosweep baseline 当成新项目运行依赖
+
+- 现象：新 `5004` job 服务通过 HTTP bridge 调旧 Autosweep 服务，遇到旧 lumapi stale session / RPC 健康检查不可靠时，新 job 状态也被拖成失败。
+- 根因：把“历史上验证过的 4/4 sweep baseline”混同为“当前架构的运行时依赖”，导致新服务继承旧目录、旧端口、旧会话状态和旧启动脚本问题。
+- 修复：`metasurface-sweep` 已改为新项目内原生 `NativeSweepRunner`，每个参数点是独立 task；旧模板只通过一次性安装脚本迁移到 `templates/metasurface/base_model.fsp`。
+- 预防：当前运行文档不得指示新项目调用旧 Autosweep 端口或 `FDTD_SWEEP_RPC_URL`；历史 baseline 只能作为算法/模板来源和回归参照。

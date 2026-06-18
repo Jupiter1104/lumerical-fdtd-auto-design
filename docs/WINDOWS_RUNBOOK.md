@@ -5,7 +5,6 @@
 - Windows 项目路径：`F:\lumerical-fdtd-auto-design\fdtd-auto-design`
 - Lumerical Python：`F:\Program Files\Lumerical\v242\python\python.exe`
 - v1 RPC 端口：`127.0.0.1:5004`
-- 旧 sweep 端口：`5003`，不要由 v1 脚本管理
 - 日志：`logs\rpc_server.err.log`、`logs\rpc_server.out.log`
 - PID：`runtime\rpc_server.pid`
 
@@ -60,11 +59,27 @@ scripts\windows\stop_rpc.bat
 - 旧 `/session/stop` 返回弃用元数据。
 - 最终 health 显示 `connected=false`。
 
+## Metasurface 模板安装
+
+首次运行真实原生 `metasurface-sweep` 前，安装已验证模板：
+
+```cmd
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
+```
+
+说明：
+
+- 这是一次性数据迁移，不是运行时旧项目依赖。
+- 目标文件是 `templates\metasurface\base_model.fsp`，该 `.fsp` 被 Git 忽略。
+- 每个真实 sweep 的 `manifest.json` 会记录模板 SHA-256、大小和修改时间。
+
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。
 - `5004` 服务健康，真实 v1 smoke 全流程通过：GUI 启动、最小几何、`.fsp` 保存、旧 `/session/stop` 兼容和 final health。
 - 最新 smoke 产物：`smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
+- 新代码已支持原生逐 sample `metasurface-sweep`，`real` 启动返回 HTTP 202；真实 2×2 原生 sweep 尚待 Windows 模板安装后验证。
 
 ## 故障排查
 

@@ -56,10 +56,10 @@
 - OpenSSH Server：Windows 端已在运行。
 - Windows 端环境：Python (v242 embedded) + lumapi + MATLAB R2024b 全栈就绪。
 - **Lumerical 版本**：v242（2024 R2），raw lumapi，路径 `F:\Program Files\Lumerical\v242\python\python.exe`。
-- **MATLAB**：R2024b Engine 已集成，Phase 4 后处理用。
+- **MATLAB**：R2024b Engine 已集成；当前原生 metasurface Phase 4 使用标准库 CSV/JSON/SVG，MATLAB 仅保留给历史 baseline 和未来扩展。
 - **运行模式**：headless (`hide=True`) 为生产默认；GUI (`hide=False`) 仅在 RDP 连接时可用。
 - 用户看 Windows 屏幕的方式：远程桌面（RDP）为主。
-- 通信方式：SSH 隧道（旧 sweep 使用 `ssh -L 5005:localhost:5005`，新 job 服务使用 `5004`）或局域网直连。
+- 通信方式：SSH 隧道（当前新 v1 服务使用 `5004`；真实 2×2 原生验证通过后计划切默认端口到 `5000`）或局域网直连。
 - 结果回传：HTTP `/results/<path>` 下载，已验证可用。
 
 ## 开放问题
