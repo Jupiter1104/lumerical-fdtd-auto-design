@@ -313,8 +313,8 @@
   - `summary.json` 自动汇入 `quality_report.json` 和 `evidence/index.json`。
   - `rpc_server.py` 的 real sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5003` baseline。
 - 验证：
-  - 本地执行 `.venv/bin/python -m compileall rpc_server.py src scripts tests`，记录实际输出。
-  - 本地执行 `.venv/bin/python -m pytest -q`，记录实际通过数量。
-  - Windows 同步并重启后，执行 `mock metasurface-sweep` 和短 `real metasurface-sweep` smoke，记录实际 job ID、valid/missing 数量、quality conclusion 和 evidence path。
+  - `.venv/bin/python -m compileall rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`91 passed in 14.79s`。
+  - Windows 待同步并重启后验证 `mock metasurface-sweep` 和短 `real metasurface-sweep` smoke。
 - 后续：
   - 把旧 sweep 内部 sample 映射为逐 task，实现 sample-level resume。
