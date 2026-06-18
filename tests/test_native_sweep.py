@@ -40,6 +40,19 @@ class FakeFdtd:
     def runjobs(self):
         self.calls.append(("runjobs",))
 
+    def runanalysis(self, name):
+        self.calls.append(("runanalysis", name))
+
+    def haveresult(self, name, result):
+        self.calls.append(("haveresult", name, result))
+        return True
+
+    def getresult(self, name, result):
+        self.calls.append(("getresult", name, result))
+        if result == "T":
+            return {"T": [0.75]}
+        return {"S21_Gn": [1j]}
+
 
 class FakeSession:
     def __init__(self, fdtd):
@@ -49,6 +62,19 @@ class FakeSession:
     def start(self, hide=True):
         self.is_connected = True
         return {"hide": hide}
+
+
+class FailingSecondResultFdtd(FakeFdtd):
+    def __init__(self):
+        super().__init__()
+        self.transmission_reads = 0
+
+    def getresult(self, name, result):
+        if result == "T":
+            self.transmission_reads += 1
+            if self.transmission_reads == 2:
+                raise RuntimeError("sample extraction failed")
+        return super().getresult(name, result)
 
 
 def create_real_job(tmp_path, phases=None):
@@ -127,3 +153,39 @@ def test_native_runner_reads_normalized_sweep_request(tmp_path):
 
     assert request["sweep"]["template"].endswith("base_model.fsp")
     assert request["sweep"]["config"]["RATIO_LIST"] == [0.2, 0.8]
+
+
+def test_native_runner_extracts_each_sample_result(tmp_path):
+    store, job = create_real_job(tmp_path, phases=[1, 2, 3])
+    fdtd = FakeFdtd()
+
+    result = NativeSweepRunner(FakeSession(fdtd), store).run(job["job_id"])
+
+    assert result["state"] == "succeeded"
+    tasks = store.list_tasks(job["job_id"])["tasks"]
+    assert [task["state"] for task in tasks] == ["succeeded", "succeeded"]
+    assert [task["phase"] for task in tasks] == ["complete", "complete"]
+    sample = json.loads(
+        Path(tasks[0]["outputs"]["result_file"]).read_text(encoding="utf-8")
+    )
+    assert sample["transmission"] == 0.75
+    assert sample["phase_rad"] == 1.5707963267948966
+
+
+def test_native_runner_keeps_successful_result_when_another_sample_fails(
+    tmp_path,
+):
+    store, job = create_real_job(tmp_path, phases=[1, 2, 3])
+
+    result = NativeSweepRunner(
+        FakeSession(FailingSecondResultFdtd()),
+        store,
+    ).run(job["job_id"])
+
+    assert result["state"] == "partial"
+    first, second = store.list_tasks(job["job_id"])["tasks"]
+    assert first["state"] == "succeeded"
+    assert Path(first["outputs"]["result_file"]).is_file()
+    assert second["state"] == "failed"
+    assert second["phase"] == "extracting"
+    assert second["error"]["message"] == "sample extraction failed"

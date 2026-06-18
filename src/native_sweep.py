@@ -1,11 +1,27 @@
 """Native metasurface sweep execution using the shared FDTD session."""
 
+import cmath
 import json
 from pathlib import Path
 
 
 def sample_model_path(job_dir: Path, task_id: str) -> Path:
     return job_dir / "models" / f"{task_id}.fsp"
+
+
+def _first_scalar(value):
+    if hasattr(value, "flat"):
+        return next(iter(value.flat))
+    if isinstance(value, (list, tuple)):
+        return _first_scalar(value[0])
+    return value
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 class NativeSweepRunner:
@@ -41,6 +57,9 @@ class NativeSweepRunner:
             self._generate_models(job_id, job_dir, template, sweep, tasks, fdtd)
         if 2 in sweep["phases"]:
             self._run_queue(job_id, tasks, fdtd)
+        if 3 in sweep["phases"]:
+            self._extract_results(job_id, job_dir, tasks, fdtd)
+            return self.store.finalize(job_id)
         return self.store.get(job_id)
 
     def _generate_models(
@@ -112,3 +131,67 @@ class NativeSweepRunner:
                 phase="solving",
             )
         fdtd.runjobs()
+
+    def _extract_results(
+        self,
+        job_id: str,
+        job_dir: Path,
+        tasks: list,
+        fdtd,
+    ) -> None:
+        for task in tasks:
+            task_id = task["task_id"]
+            self.store.update_task(
+                job_id,
+                task_id,
+                state="running",
+                phase="extracting",
+            )
+            try:
+                model_path = sample_model_path(job_dir, task_id).resolve()
+                fdtd.load(str(model_path))
+                fdtd.runanalysis("::model::s_params")
+                if not fdtd.haveresult("::model::s_params", "T"):
+                    raise RuntimeError("Missing T result.")
+                if not fdtd.haveresult("::model::s_params", "S"):
+                    raise RuntimeError("Missing S result.")
+                transmission_data = fdtd.getresult("::model::s_params", "T")
+                phase_data = fdtd.getresult("::model::s_params", "S")
+                transmission = float(_first_scalar(transmission_data["T"]))
+                phase_rad = float(
+                    cmath.phase(
+                        complex(_first_scalar(phase_data["S21_Gn"]))
+                    )
+                )
+                result_path = job_dir / "results" / f"{task_id}.json"
+                result = {
+                    "task_id": task_id,
+                    **task["input"],
+                    "transmission": transmission,
+                    "phase_rad": phase_rad,
+                    "synthetic": False,
+                }
+                _write_json(result_path, result)
+                self.store.update_task(
+                    job_id,
+                    task_id,
+                    state="succeeded",
+                    phase="complete",
+                    outputs={
+                        "result_file": str(result_path.resolve()),
+                        "transmission": transmission,
+                        "phase_rad": phase_rad,
+                    },
+                )
+            except Exception as exc:
+                self.store.update_task(
+                    job_id,
+                    task_id,
+                    state="failed",
+                    phase="extracting",
+                    error={
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                        "details": {},
+                    },
+                )
