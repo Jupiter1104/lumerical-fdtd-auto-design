@@ -119,7 +119,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Set, Union
 
 
 JOB_STATES = {"planned", "queued", "running", "succeeded", "failed", "partial"}
@@ -155,7 +155,7 @@ def slugify(value: str) -> str:
 
 
 class JobStore:
-    def __init__(self, root: Path | str = "jobs", code_version: str = "unknown"):
+    def __init__(self, root: Union[Path, str] = "jobs", code_version: str = "unknown"):
         self.root = Path(root)
         self.code_version = code_version
 
@@ -271,11 +271,11 @@ class JobStore:
             raise JobError("job_not_found", f"Job not found: {job_id}", 404, {"job_id": job_id})
         return job_dir
 
-    def _tasks(self, job_id: str) -> list[dict]:
+    def _tasks(self, job_id: str) -> list:
         tasks_dir = self._job_dir(job_id) / "tasks"
         return [self._read_json(path) for path in sorted(tasks_dir.glob("task_*.json"))]
 
-    def _task_counts(self, tasks: list[dict]) -> dict:
+    def _task_counts(self, tasks: list) -> dict:
         counts = {state: 0 for state in TASK_STATES}
         for task in tasks:
             counts[task["state"]] += 1
@@ -491,7 +491,7 @@ Add these methods to `JobStore` in `src/job_store.py`:
         self,
         job_id: str,
         executor: Optional[Callable[[dict, Path], dict]] = None,
-        only_task_ids: Optional[set[str]] = None,
+        only_task_ids: Optional[Set[str]] = None,
     ) -> None:
         self._write_status(job_id, "running", "Job running.")
         job_dir = self._job_dir(job_id)

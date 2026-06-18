@@ -27,6 +27,7 @@ figures/
 logs/
 runtime/
 smoke-output/
+jobs/
 Dephasing.svg
 
 # IDE
