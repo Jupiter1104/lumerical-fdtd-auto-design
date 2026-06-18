@@ -24,6 +24,9 @@ build/
 # Sweep outputs
 results/
 figures/
+logs/
+runtime/
+smoke-output/
 
 # IDE
 .vscode/
