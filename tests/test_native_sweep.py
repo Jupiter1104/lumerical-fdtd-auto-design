@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -170,6 +171,22 @@ def test_native_runner_reads_normalized_sweep_request(tmp_path):
 
     assert request["sweep"]["template"].endswith("base_model.fsp")
     assert request["sweep"]["config"]["RATIO_LIST"] == [0.2, 0.8]
+
+
+def test_native_runner_records_template_fingerprint(tmp_path):
+    store, job = create_real_job(tmp_path)
+    request = read_json(Path(job["job_dir"]) / "inputs" / "request.json")
+    template = Path(request["sweep"]["template"])
+
+    NativeSweepRunner(FakeSession(FakeFdtd()), store).run(job["job_id"])
+
+    manifest = store.get(job["job_id"])["manifest"]
+    assert manifest["template"]["path"].endswith("base_model.fsp")
+    assert manifest["template"]["sha256"] == hashlib.sha256(
+        template.read_bytes()
+    ).hexdigest()
+    assert manifest["template"]["size_bytes"] > 0
+    assert manifest["template"]["modified_at"] > 0
 
 
 def test_native_runner_extracts_each_sample_result(tmp_path):

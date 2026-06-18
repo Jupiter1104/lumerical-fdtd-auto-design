@@ -121,6 +121,13 @@ class JobStore:
     def list_tasks(self, job_id: str) -> dict:
         return {"job_id": job_id, "tasks": self._tasks(job_id)}
 
+    def update_manifest(self, job_id: str, values: dict) -> dict:
+        manifest_path = self._job_dir(job_id) / "manifest.json"
+        manifest = self._read_json(manifest_path)
+        manifest.update(values)
+        self._write_json(manifest_path, manifest)
+        return manifest
+
     def resume(
         self,
         job_id: str,

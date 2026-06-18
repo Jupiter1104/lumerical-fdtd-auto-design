@@ -49,6 +49,21 @@ def test_plan_creates_persistent_job_layout(tmp_path):
     assert task["operation"] == "geometry-smoke"
 
 
+def test_update_manifest_merges_top_level_metadata(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.plan({"mode": "mock", "job_type": "geometry-smoke"})
+
+    manifest = store.update_manifest(
+        job["job_id"],
+        {"template": {"sha256": "abc", "size_bytes": 3}},
+    )
+
+    assert manifest["job_id"] == job["job_id"]
+    assert manifest["job_type"] == "geometry-smoke"
+    assert manifest["template"] == {"sha256": "abc", "size_bytes": 3}
+    assert store.get(job["job_id"])["manifest"]["template"]["sha256"] == "abc"
+
+
 def test_mock_start_marks_task_and_job_succeeded(tmp_path):
     store = JobStore(tmp_path / "jobs", code_version="test-sha")
     result = store.start({"mode": "mock", "job_type": "geometry-smoke"})

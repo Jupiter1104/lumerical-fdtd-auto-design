@@ -1,10 +1,19 @@
 """Native metasurface sweep execution using the shared FDTD session."""
 
 import cmath
+import hashlib
 import json
 from pathlib import Path
 
 from src.sweep_job import write_job_artifacts
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def sample_model_path(job_dir: Path, task_id: str) -> Path:
@@ -46,6 +55,18 @@ class NativeSweepRunner:
         template = Path(sweep["template"]).resolve()
         if not template.is_file():
             raise FileNotFoundError(f"Sweep template not found: {template}")
+        stat = template.stat()
+        self.store.update_manifest(
+            job_id,
+            {
+                "template": {
+                    "path": str(template),
+                    "sha256": file_sha256(template),
+                    "size_bytes": stat.st_size,
+                    "modified_at": stat.st_mtime,
+                }
+            },
+        )
 
         tasks = [
             task

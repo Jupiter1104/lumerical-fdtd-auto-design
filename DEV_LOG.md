@@ -370,3 +370,19 @@
   - `rg "run_deployed_sweep|FDTD_SWEEP_RPC_URL|_metasurface_sweep_executor|5005" rpc_server.py src tests`：无匹配。
 - 后续：
   - 模板安装/指纹校验；同步 Windows 后在 `5004` 做真实 2×2 原生 sweep 验证。
+
+## 2026-06-18 - 模板安装脚本与运行时指纹
+
+- 目标：让原生 metasurface sweep 使用受控本地模板，并在每个 job manifest 中留下可审计指纹。
+- 修改：
+  - 新增 `scripts/windows/install_metasurface_template.ps1` 与 `.bat`，把用户指定 `.fsp` 复制到 `templates\metasurface\base_model.fsp` 并打印 SHA-256。
+  - 新增 `templates/metasurface/README.md`，记录模板必需对象、安装命令和 `.fsp` 不入 Git 的约束。
+  - `NativeSweepRunner` 在启动时计算模板 SHA-256、文件大小、mtime 和绝对路径，写入 `manifest.template`。
+  - `JobStore.update_manifest()` 支持原子更新 manifest 顶层 metadata。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_native_sweep.py tests/test_job_store.py -q`：`21 passed`。
+  - `.venv/bin/python -m pytest -q`：`112 passed`。
+  - `git check-ignore -v templates/metasurface/base_model.fsp`：命中 `.gitignore` 的 `*.fsp`。
+  - Mac 本机无 `pwsh`/`powershell`，安装脚本需在 Windows 同步后真实验证。
+- 后续：
+  - Windows 安装模板、重启 `5004`，执行真实 2×2 原生 sweep 验证。
