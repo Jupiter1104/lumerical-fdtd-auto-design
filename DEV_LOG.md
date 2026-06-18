@@ -340,3 +340,17 @@
   - `.venv/bin/python -m compileall -q src/native_sweep.py tests/test_native_sweep.py`：通过。
 - 后续：
   - 进入 Phase 4：CSV、质量报告和 SVG evidence；随后接 Flask 异步协调器。
+
+## 2026-06-18 - 原生 metasurface sweep Phase 4 evidence 产物
+
+- 目标：在新项目内完成原生 sweep 的 evidence-first 聚合，不依赖旧 MATLAB 后处理。
+- 修改：
+  - `src/sweep_job.py` 新增 `write_job_artifacts()`，聚合 `results/task_*.json` 为 `results/sweep_results.csv`、`results/sweep_summary.json`、`quality_report.json` 和 `evidence/index.json`。
+  - 使用标准库生成 `evidence/transmission_heatmap.svg` 与 `evidence/phase_heatmap.svg`，避免新增 Windows Lumerical Python 依赖。
+  - 质量报告覆盖缺样本、零有效样本、透过率越界，并固定 `requires_human_review=true`。
+  - `NativeSweepRunner` 已在 phases 包含 `4` 时调用聚合，随后 `JobStore.finalize()` 将 quality/evidence 汇入 `summary.json`。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_sweep_job.py tests/test_native_sweep.py tests/test_job_store.py -q`：`27 passed`。
+  - `.venv/bin/python -m compileall -q src/sweep_job.py src/native_sweep.py tests/test_sweep_job.py tests/test_native_sweep.py`：通过。
+- 后续：
+  - 接入 Flask 异步协调器，移除旧 Autosweep bridge 依赖，并恢复全量离线测试。
