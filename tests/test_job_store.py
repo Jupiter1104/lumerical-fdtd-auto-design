@@ -149,3 +149,31 @@ def test_resume_selects_pending_and_failed_tasks_only(tmp_path):
     resume = store.resume(job_id)
 
     assert resume["task_ids"] == ["task_0002", "task_0003"]
+
+
+def test_plan_accepts_metasurface_sweep_and_creates_default_task(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+
+    result = store.plan({"mode": "mock", "job_type": "metasurface-sweep"})
+
+    job_dir = tmp_path / "jobs" / result["job_id"]
+    task = read_json(job_dir / "tasks" / "task_0001.json")
+    manifest = read_json(job_dir / "manifest.json")
+
+    assert result["state"] == "planned"
+    assert manifest["job_type"] == "metasurface-sweep"
+    assert task["operation"] == "metasurface-sweep"
+    assert task["input"]["config"]["RATIO_PTS"] == 2
+    assert task["input"]["phases"] == [1, 2, 3]
+
+
+def test_summary_includes_quality_and_evidence_when_present(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+
+    result = store.start({"mode": "mock", "job_type": "metasurface-sweep"})
+
+    summary = read_json(tmp_path / "jobs" / result["job_id"] / "summary.json")
+
+    assert summary["quality_report"]["conclusion"] == "pass"
+    assert summary["quality_report"]["requires_human_review"] is True
+    assert summary["evidence"]["download_policy"]["default_payload"] == "evidence-only"

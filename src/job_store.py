@@ -8,9 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
+from src.sweep_job import build_sweep_tasks, run_mock_sweep
+
 
 JOB_STATES = {"planned", "queued", "running", "succeeded", "failed", "partial"}
 TASK_STATES = {"pending", "running", "succeeded", "failed", "skipped"}
+SUPPORTED_JOB_TYPES = {"geometry-smoke", "metasurface-sweep"}
 
 
 class JobError(Exception):
@@ -139,19 +142,24 @@ class JobStore:
                 "mode must be one of plan, mock, or real.",
                 400,
             )
-        if job_type != "geometry-smoke":
+        if job_type not in SUPPORTED_JOB_TYPES:
             raise JobError(
                 "validation_error",
-                "job_type must be geometry-smoke in v1.",
+                f"job_type must be one of {sorted(SUPPORTED_JOB_TYPES)}.",
                 400,
             )
 
-        tasks = request.get("tasks") or [
-            {
-                "operation": "geometry-smoke",
-                "input": {"hide": bool(request.get("hide", False))},
-            }
-        ]
+        if request.get("tasks"):
+            tasks = request["tasks"]
+        elif job_type == "metasurface-sweep":
+            tasks = build_sweep_tasks(request)
+        else:
+            tasks = [
+                {
+                    "operation": "geometry-smoke",
+                    "input": {"hide": bool(request.get("hide", False))},
+                }
+            ]
         if not isinstance(tasks, list) or not tasks:
             raise JobError(
                 "validation_error",
@@ -297,6 +305,7 @@ class JobStore:
         return status
 
     def _write_summary(self, job_id: str) -> dict:
+        job_dir = self._job_dir(job_id)
         tasks = self._tasks(job_id)
         summary = {
             "job_id": job_id,
@@ -307,7 +316,13 @@ class JobStore:
                 if task["state"] == "succeeded"
             ],
         }
-        self._write_json(self._job_dir(job_id) / "summary.json", summary)
+        quality_path = job_dir / "quality_report.json"
+        evidence_path = job_dir / "evidence" / "index.json"
+        if quality_path.exists():
+            summary["quality_report"] = self._read_json(quality_path)
+        if evidence_path.exists():
+            summary["evidence"] = self._read_json(evidence_path)
+        self._write_json(job_dir / "summary.json", summary)
         return summary
 
     def _run_job(
@@ -350,7 +365,9 @@ class JobStore:
         self._write_json(task_path, task)
 
         try:
-            if executor is None:
+            if executor is None and task["operation"] == "metasurface-sweep":
+                outputs = run_mock_sweep(task, job_dir)
+            elif executor is None:
                 outputs = {"mode": task["mode"], "operation": task["operation"]}
             else:
                 outputs = executor(task, job_dir)
