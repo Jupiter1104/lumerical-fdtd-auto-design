@@ -2,9 +2,9 @@
 
 ## 状态
 
-- 代码状态：本提交包含 raw lumapi `close()` detach/timeout 修复，待同步 Windows clone。
+- 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上 `65 passed`，不依赖 Lumerical。
-- Windows 状态：`127.0.0.1:5004` 已用 `0cdf639` 完成 GUI 启动、建模和保存 `.fsp`；旧 `/session/stop` 在 raw lumapi `close()` 处超时，需同步本提交后复测完整 smoke。
+- Windows 状态：`127.0.0.1:5004` 真实 v1 smoke 全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 过渡期：旧 `5003` Autosweep 服务与新 `5004` v1 服务并行；本文件只描述 `5004` v1。
 
 ## Envelope

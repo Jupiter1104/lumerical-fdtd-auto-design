@@ -62,10 +62,9 @@ scripts\windows\stop_rpc.bat
 
 ## 当前已知状态（2026-06-18）
 
-- `0cdf639` 已同步到 Windows clone，用户已本地重启并加载该版本。
-- `5004` 服务健康，真实 smoke 已完成 GUI 启动、最小几何和 `.fsp` 保存：`smoke-output\rpc_v1_smoke_20260618_180752.fsp`。
-- 当前失败点：旧 `/session/stop` 调用 raw lumapi `fdtd.close()` 后窗口关闭但 API 不返回，导致 smoke 超时。
-- 仓库已加入 `/session/close` detach/timeout 修复；需 Windows `git pull --ff-only` 后本地运行 `restart_rpc.bat` 并复跑 smoke。
+- Windows clone 已同步并加载 close detach/timeout 修复。
+- `5004` 服务健康，真实 v1 smoke 全流程通过：GUI 启动、最小几何、`.fsp` 保存、旧 `/session/stop` 兼容和 final health。
+- 最新 smoke 产物：`smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 
 ## 故障排查
 

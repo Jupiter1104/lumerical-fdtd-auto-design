@@ -64,7 +64,7 @@
 
 ## 开放问题
 
-- 问题：Windows `5004` v1 smoke 的 GUI 启动、建模和保存已通过；raw lumapi `close()` 不返回的 detach/timeout 修复同步到 Windows 后，完整 smoke 是否通过？
+- 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 问题：通用 `/debug/eval` 是否仅作为受审计的调试工具保留，默认自然语言建模改走 typed recipe/builder？
 - 问题：`SimulationPlan` 的最小 schema 如何覆盖 FDTD/FDE/EME，同时避免首版过度抽象？
 - 问题：MCP Server 何时接入 Claude Code？

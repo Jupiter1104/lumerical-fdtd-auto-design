@@ -27,4 +27,4 @@
 - 有效做法：先把新 v1 服务隔离到 `5004`，保留旧 `5003` sweep 环境；用离线契约测试保证 Mac 端和 Server 语义稳定。
 - 无效做法：把复杂 PowerShell 逻辑写进 `.bat` 单行，错误容易被窗口吞掉；用 `python.exe` 挂在批处理窗口下不适合常驻服务。
 - 可复用经验：Windows 常驻控制进程应集中到 PowerShell 管理脚本，`.bat` 只做入口；Python 后台服务优先用 `pythonw.exe`。
-- 下一步调整：同步 close detach/timeout 修复到 Windows 并复测完整 v1 smoke；通过后进入持久 job/task 设计。
+- 下一步调整：真实 v1 smoke 已通过；进入持久 job/task 设计。

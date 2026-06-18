@@ -280,7 +280,7 @@
   - Mac 离线：`.venv/bin/python -m pytest -q`，`65 passed`。
   - Windows：`0cdf639` 已同步到 `F:\lumerical-fdtd-auto-design\fdtd-auto-design`，用户本地重启后 `5004` health 通过。
   - 真实 smoke 已通过 GUI session、status、FDTD region、silicon rectangle 和 model save，生成 `smoke-output\rpc_v1_smoke_20260618_180752.fsp`。
-  - 失败点收窄为旧 `/session/stop` → raw lumapi `fdtd.close()` 不返回；仓库已加入 close detach/timeout 修复，待 Windows 同步后复测完整 smoke。
+  - 失败点收窄为旧 `/session/stop` → raw lumapi `fdtd.close()` 不返回；仓库已加入 close detach/timeout 修复。
+  - Windows 同步并本地重启后，完整 v1 smoke 通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 后续：
-  - Windows `git pull --ff-only` 后本地重启 `scripts\windows\restart_rpc.bat`，再运行 `scripts\v1_smoke_test.py`。
-  - smoke 通过后再设计持久 job/task 状态机。
+  - 设计并实现持久 job/task 状态机。
