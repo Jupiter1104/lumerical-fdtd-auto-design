@@ -168,8 +168,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--rpc",
-        default="http://127.0.0.1:5004",
-        help="RPC Server URL (default: http://127.0.0.1:5004)",
+        default="http://127.0.0.1:5000",
+        help="RPC Server URL (default: http://127.0.0.1:5000)",
     )
     parser.add_argument(
         "--output-dir",

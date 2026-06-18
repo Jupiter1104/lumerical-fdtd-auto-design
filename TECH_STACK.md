@@ -195,17 +195,17 @@ python3 -m venv .venv
 .venv/bin/python -m pytest -q
 ```
 
-过渡期限制：新 API v1 默认仍在 `5004` 开发验证；真实 2×2 原生 sweep 通过后再切默认端口到 `5000`。
+当前限制：新 API v1 默认端口已切换为 `5000`；`5004` 仅作为开发期真实验证历史端口。
 
 ## 连接方式
 
 ```bash
 # === 新 v1 smoke / 通用建模 / 原生 sweep（在 Windows 本机） ===
-set FDTD_RPC_URL=http://127.0.0.1:5004
+set FDTD_RPC_URL=http://127.0.0.1:5000
 
 # === SSH 隧道 ===
-ssh -L 5004:localhost:5004 32482@192.168.31.26
-export FDTD_RPC_URL=http://localhost:5004
+ssh -L 5000:localhost:5000 32482@192.168.31.26
+export FDTD_RPC_URL=http://localhost:5000
 ```
 
 ## 命令
@@ -231,10 +231,10 @@ F:\Program Files\Lumerical\v242\python\python.exe scripts\v1_smoke_test.py
 pip install mcp requests
 
 # 新 v1 smoke 可通过 SSH 隧道触发，但 GUI 可见性取决于 Windows 桌面/RDP 会话
-python scripts/v1_smoke_test.py --rpc http://localhost:5004
+python scripts/v1_smoke_test.py --rpc http://localhost:5000
 
 # 启动 MCP Server（供 Claude Code / Hermes 调用）
-FDTD_RPC_URL=http://localhost:5004 python -m src.server
+FDTD_RPC_URL=http://localhost:5000 python -m src.server
 ```
 
 ## 环境变量
@@ -243,7 +243,7 @@ FDTD_RPC_URL=http://localhost:5004 python -m src.server
 |---|---|---|
 | `FDTD_RPC_URL` | Mac | Windows RPC Server 地址 |
 | `FDTD_PYTHON` | Windows | 管理脚本使用的 Lumerical Python，默认 `F:\Program Files\Lumerical\v242\python\python.exe` |
-| `FDTD_RPC_PORT` | Windows | 新 v1 服务端口，默认 `5004` |
+| `FDTD_RPC_PORT` | Windows | 新 v1 服务端口，默认 `5000` |
 | `LUMAPI_PATH` | Windows | raw lumapi API 路径覆盖；默认从 Lumerical Python 相对路径推断 |
 
 ## 关键约束

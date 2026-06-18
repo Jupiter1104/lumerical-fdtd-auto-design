@@ -11,11 +11,11 @@
 - 阶段：MVP 验证完成，通用建模能力补全中
 - 文档基线：2026-06-18 — API v1、Windows 本地重启脚本、真实 smoke 和短 job 流程已对齐到代码
 - 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → 4 点真实 sweep，结果 4/4 valid
-- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已加载 close detach/timeout 修复和持久 `/jobs/*`。`geometry-smoke` 已真实通过；`metasurface-sweep` 已切换为新项目原生逐 sample job，包含 Phase 1-4、quality report 和 evidence index；`real metasurface-sweep` 现在由 `/jobs/start` 异步返回 `202 + job_id`
-- 注意：当前仍在原生 sweep 过渡验证期。旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖
+- 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已完成真实 2×2 原生 `metasurface-sweep` 验证，结果 4/4 valid、quality `pass`。新服务默认端口已提升为 `5000`；`metasurface-sweep` 由 `/jobs/start` 异步返回 `202 + job_id`，包含 Phase 1-4、quality report 和 evidence index。
+- 注意：旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖。
 - 主要下一步：
-  - Windows 同步并验证短 `real metasurface-sweep` 2×2 job
-  - 补模板安装/指纹校验和 resume 指纹保护
+  - Windows 同步默认端口 `5000` 并做 health/mock smoke
+  - 补 resume 指纹保护
   - MCP Server 接入 Claude Code（创建 `.mcp.json`）
 
 ## 核心文档

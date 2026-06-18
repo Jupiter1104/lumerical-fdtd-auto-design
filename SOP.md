@@ -21,13 +21,13 @@
    ```cmd
    cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
    ```
-2. 本地启动或重启（默认端口 5004）：
+2. 本地启动或重启（默认端口 5000）：
    ```cmd
    scripts\windows\restart_rpc.bat
    ```
 3. 健康检查：
    ```cmd
-   curl http://127.0.0.1:5004/health
+   curl http://127.0.0.1:5000/health
    ```
 4. 真实 v1 smoke（不求解）：
    ```cmd
@@ -55,12 +55,12 @@
    ```
 3. 建立 SSH 隧道（推荐）或直连：
    ```bash
-   ssh -L 5004:localhost:5004 32482@192.168.31.26
-   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5004
+   ssh -L 5000:localhost:5000 32482@192.168.31.26
+   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5000
    ```
 4. 验证连接：
    ```bash
-   curl http://localhost:5004/health
+   curl http://localhost:5000/health
    ```
 
 ## SOP-004 - 原生 metasurface sweep 端到端验证
@@ -74,13 +74,13 @@
 旧 `scripts/smoke_test.py` 仅用于历史 Autosweep baseline，不再作为新 v1 验收入口。
 
 ```bash
-python scripts/v1_smoke_test.py --rpc http://localhost:5004
+python scripts/v1_smoke_test.py --rpc http://localhost:5000
 ```
 
 ## SOP-004b - 新 v1 smoke 验证
 
 1. Windows 本地确认 `scripts\windows\restart_rpc.bat` 健康检查通过。
-2. 运行（Mac 端需先建立 `5004` 隧道；Windows 本机可直接跑）：
+2. 运行（Mac 端需先建立 `5000` 隧道；Windows 本机可直接跑）：
    ```cmd
    "F:\Program Files\Lumerical\v242\python\python.exe" scripts\v1_smoke_test.py
    ```
@@ -96,7 +96,7 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5004
    - `fdtd.clearjobs()` 在 Phase 1 循环前
    - `fdtd.setnamed("FDTD", "express mode", EXPRESS_MODE)` 在每次 `load()` 后 `save()` 前
    - 当前 CPU 模板/resource 使用默认 `EXPRESS_MODE=0`；只有明确改为 GPU 时才设 `EXPRESS_MODE=1`
-5. 端口未被幽灵进程占用（`netstat -ano | findstr 5004`）。
+5. 端口未被幽灵进程占用（`netstat -ano | findstr 5000`）。
 
 ## SOP-006 - 交付
 

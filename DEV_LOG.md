@@ -441,3 +441,45 @@
   - evidence：`results/sweep_results.csv`、`results/sweep_summary.json`、`quality_report.json`、`evidence/index.json`、`transmission_heatmap.svg`、`phase_heatmap.svg` 均已生成。
 - 后续：
   - Task 10 真实 2×2 前必须给出审批摘要：4 samples、phases `[1,2,3,4]`、CPU/`EXPRESS_MODE=0`、模板 SHA、输出目录、license/覆盖风险，并等待用户明确批准。
+
+## 2026-06-18 - Task 10 真实 2×2 原生 sweep 通过
+
+- 目标：在开发期 `5004` 上完成一次真实 `metasurface-sweep` 2×2 验证，确认新 job/task 状态机、原生 Phase 1-4、质量报告和 evidence-first 输出都能跑通。
+- 审批摘要：
+  - `mode=real`，`job_type=metasurface-sweep`，phases `[1,2,3,4]`。
+  - 参数：`ratio=[0.2,0.8]` × `period=[390e-9,540e-9]`，`height=700e-9`。
+  - 资源：CPU，`EXPRESS_MODE=0`，`FDTD_PROCESSES=1`，`FDTD_CAPACITY=1`。
+  - Mesh：继承 `base_model.fsp` 模板，本次不修改网格精度。
+  - 模板 SHA-256：`03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176`。
+- 真实运行：
+  - job_id：`job_20260618_235801_metasurface_sweep`。
+  - HTTP 启动：`202`，初始 `4 pending`。
+  - Phase 1：4 个 `.fsp` 模型生成成功。
+  - Phase 2：4 个 task 进入 `solving`。
+  - Phase 3/4：结果提取和 evidence 写出成功。
+- 结果：
+  - state：`succeeded`。
+  - task：`4 succeeded / 0 failed`。
+  - quality：`pass`，`valid_count=4`，`missing_count=0`，仍要求人工物理审核。
+  - CSV：
+    - `ratio=0.2, period=390e-9`：`T=0.9672581224386152`，`phase=-0.6737631333967985`。
+    - `ratio=0.8, period=390e-9`：`T=0.7300105242892926`，`phase=-1.9698575481531564`。
+    - `ratio=0.2, period=540e-9`：`T=0.9679605819741104`，`phase=-0.6426061423354885`。
+    - `ratio=0.8, period=540e-9`：`T=0.9353412881476056`，`phase=-0.9494834757797856`。
+  - Evidence：`results/sweep_results.csv`、`results/sweep_summary.json`、`quality_report.json`、`evidence/index.json`、`transmission_heatmap.svg`、`phase_heatmap.svg` 均已生成。
+- 发现：
+  - 审批字段必须为 `{"approved": true, "approved_for": "real_run"}`；带任务名的 human-readable tag 会被正确拒绝为 `approval_required`。
+- 后续：
+  - Task 11：真实 2×2 通过后，将新服务默认端口从 `5004` 提升到 `5000`，并在 Windows 同步后做 health/mock smoke。
+
+## 2026-06-18 - Task 11 默认端口提升到 5000
+
+- 目标：完成真实 2×2 后，把新 v1 服务从开发期 `5004` 推进到默认 `5000`。
+- 修改：
+  - `rpc_server.py` CLI 默认端口改为 `5000`。
+  - `scripts/windows/manage_rpc.ps1` 在未设置 `FDTD_RPC_PORT` 时默认使用 `5000`。
+  - `scripts/v1_smoke_test.py` 默认 RPC URL 改为 `http://127.0.0.1:5000`。
+  - README、REQUIREMENTS、TECH_STACK、SOP、AGENTS、RPC API 和 Windows runbook 同步当前端口口径。
+  - 新增 `tests/test_default_ports.py` 锁定默认端口。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_default_ports.py -q`：`1 passed`。

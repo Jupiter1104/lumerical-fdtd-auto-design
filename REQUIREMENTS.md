@@ -59,12 +59,12 @@
 - **MATLAB**：R2024b Engine 已集成；当前原生 metasurface Phase 4 使用标准库 CSV/JSON/SVG，MATLAB 仅保留给历史 baseline 和未来扩展。
 - **运行模式**：headless (`hide=True`) 为生产默认；GUI (`hide=False`) 仅在 RDP 连接时可用。
 - 用户看 Windows 屏幕的方式：远程桌面（RDP）为主。
-- 通信方式：SSH 隧道（当前新 v1 服务使用 `5004`；真实 2×2 原生验证通过后计划切默认端口到 `5000`）或局域网直连。
+- 通信方式：SSH 隧道或局域网直连；新 v1 服务默认端口为 `5000`，`5004` 仅保留为开发期历史端口。
 - 结果回传：HTTP `/results/<path>` 下载，已验证可用。
 
 ## 开放问题
 
-- 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
+- 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过；真实 2×2 原生 `metasurface-sweep` 已在 `5004` 通过，后续默认服务端口切换为 `5000`。
 - 问题：通用 `/debug/eval` 是否仅作为受审计的调试工具保留，默认自然语言建模改走 typed recipe/builder？
 - 问题：`SimulationPlan` 的最小 schema 如何覆盖 FDTD/FDE/EME，同时避免首版过度抽象？
 - 问题：MCP Server 何时接入 Claude Code？

@@ -17,7 +17,7 @@ $Launcher = if (Test-Path $Pythonw) { $Pythonw } else { $Python }
 $Port = if ($env:FDTD_RPC_PORT) {
     [int]$env:FDTD_RPC_PORT
 } else {
-    5004
+    5000
 }
 
 $RuntimeDir = Join-Path $ProjectRoot "runtime"

@@ -4,7 +4,7 @@
 
 - Windows 项目路径：`F:\lumerical-fdtd-auto-design\fdtd-auto-design`
 - Lumerical Python：`F:\Program Files\Lumerical\v242\python\python.exe`
-- v1 RPC 端口：`127.0.0.1:5004`
+- v1 RPC 端口：`127.0.0.1:5000`
 - 日志：`logs\rpc_server.err.log`、`logs\rpc_server.out.log`
 - PID：`runtime\rpc_server.pid`
 
@@ -77,13 +77,14 @@ scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。
-- `5004` 服务健康，真实 v1 smoke 全流程通过：GUI 启动、最小几何、`.fsp` 保存、旧 `/session/stop` 兼容和 final health。
+- `5004` 已完成开发期真实验证：v1 smoke 全流程通过，真实 2×2 原生 `metasurface-sweep` 结果 4/4 valid、quality `pass`。
+- 新服务默认端口已切换为 `5000`；Windows 同步后用 `restart_rpc.bat` 启动。
 - 最新 smoke 产物：`smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
-- 新代码已支持原生逐 sample `metasurface-sweep`，`real` 启动返回 HTTP 202；真实 2×2 原生 sweep 尚待 Windows 模板安装后验证。
+- 新代码已支持原生逐 sample `metasurface-sweep`，`real` 启动返回 HTTP 202。
 
 ## 故障排查
 
-### `5004` 连不上
+### `5000` 连不上
 
 ```cmd
 scripts\windows\status_rpc.bat

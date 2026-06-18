@@ -4,7 +4,7 @@ The process owns one persistent lumapi session. Mac-side clients call the v1
 HTTP contract defined in docs/superpowers/specs/.
 
 Run on Windows:
-    python rpc_server.py --port 5004
+    python rpc_server.py --port 5000
 """
 
 import argparse
@@ -708,8 +708,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=5003,
-        help="Server port (default: 5003)",
+        default=5000,
+        help="Server port (default: 5000)",
     )
     parser.add_argument(
         "--host",

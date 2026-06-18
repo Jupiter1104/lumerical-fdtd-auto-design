@@ -83,12 +83,12 @@ Agent **不具备**物理直觉。它能处理报错（语法错误、网格不�
 # 1. 验证 lumapi 可用
 F:\Program Files\Lumerical\v242\python\python.exe -c "import lumapi; print('OK')"
 
-# 2. 启动新 v1 RPC Server（端口 5004）
+# 2. 启动新 v1 RPC Server（默认端口 5000）
 cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
 scripts\windows\restart_rpc.bat
 
 # 3. 本地验证
-curl http://127.0.0.1:5004/health
+curl http://127.0.0.1:5000/health
 
 # 3b. 首次真实 sweep 前安装 metasurface 模板
 scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
@@ -96,11 +96,11 @@ scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_
 # === Mac 端 ===
 
 # 4. 建立 SSH 隧道
-ssh -L 5004:localhost:5004 32482@192.168.31.26
+ssh -L 5000:localhost:5000 32482@192.168.31.26
 
 # 5. 新 v1 smoke test
-python scripts/v1_smoke_test.py --rpc http://localhost:5004
+python scripts/v1_smoke_test.py --rpc http://localhost:5000
 
 # 6. 启动 MCP Server（供 Claude Code 调用）
-FDTD_RPC_URL=http://localhost:5004 python -m src.server
+FDTD_RPC_URL=http://localhost:5000 python -m src.server
 ```

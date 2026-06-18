@@ -157,3 +157,13 @@
 - 根因：把“历史上验证过的 4/4 sweep baseline”混同为“当前架构的运行时依赖”，导致新服务继承旧目录、旧端口、旧会话状态和旧启动脚本问题。
 - 修复：`metasurface-sweep` 已改为新项目内原生 `NativeSweepRunner`，每个参数点是独立 task；旧模板只通过一次性安装脚本迁移到 `templates/metasurface/base_model.fsp`。
 - 预防：当前运行文档不得指示新项目调用旧 Autosweep 端口或 `FDTD_SWEEP_RPC_URL`；历史 baseline 只能作为算法/模板来源和回归参照。
+
+## 2026-06-18 - 真实 job 审批字段必须精确匹配
+
+- 现象：用户已批准真实运行，但 `/jobs/start` 仍返回 `403 approval_required`。
+- 根因：服务端契约要求 `approval.approved_for == "real_run"`；把字段写成更具体的 human-readable tag（如 `task10_real_2x2...`）会被视为未批准。
+- 修复：真实运行请求使用：
+  ```json
+  {"approval": {"approved": true, "approved_for": "real_run"}}
+  ```
+- 预防：真实运行的上下文说明放在审批摘要和 job log，不放进 `approved_for` 字段；若要记录任务名，后续应新增独立 metadata 字段。
