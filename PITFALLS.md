@@ -167,3 +167,17 @@
   {"approval": {"approved": true, "approved_for": "real_run"}}
   ```
 - 预防：真实运行的上下文说明放在审批摘要和 job log，不放进 `approved_for` 字段；若要记录任务名，后续应新增独立 metadata 字段。
+
+## 2026-06-18 - 管理脚本自更新不会影响当前 PowerShell 进程
+
+- 现象：`manage_rpc.ps1 UpdateAndRestart` 执行 `git pull` 拉到新脚本后，后续 `Stop-Rpc/Start-Rpc` 仍使用旧脚本中已解析的默认端口，导致默认端口从 `5004` 切到 `5000` 时仍尝试启动 `5004`。
+- 根因：PowerShell 先加载并执行当前脚本，脚本文件在运行中被 Git 更新不会重载当前进程里的变量和函数。
+- 修复：涉及 `manage_rpc.ps1` 自身或默认端口变化时，分两步执行：先 `git pull --ff-only`，再启动新的 PowerShell 进程运行 `manage_rpc.ps1 Restart`；必要时显式设置 `FDTD_RPC_PORT=5000`。
+- 预防：不要把“更新管理脚本”和“依赖新管理脚本行为的重启”放在同一个已加载的 PowerShell 进程里。
+
+## 2026-06-18 - Windows TCP 连接表可能残留无进程 PID
+
+- 现象：旧 RPC PID 已无法通过 `Get-Process`/`Get-CimInstance` 查到，HTTP 也不响应，但 `netstat`/`Get-NetTCPConnection` 仍短暂显示 `127.0.0.1:5004 LISTENING` 和旧 PID。
+- 根因：`pythonw.exe`/Flask/lumapi 后台进程被强制停止后，Windows TCP 状态清理可能滞后；也可能与未正常退出的 close/CLOSE_WAIT 连接有关。
+- 修复：确认新端口 health 可用、旧端口 HTTP 不响应、旧 PID 无进程对象；等待系统释放。若同端口必须立即复用，优先重启 RPC 所在 Windows 会话/机器，而不是反复启动多个服务。
+- 预防：端口切换时用新端口启动；同端口重启前先等待端口完全释放并检查 PID 文件、进程对象和 `netstat` 三者一致。

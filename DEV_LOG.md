@@ -483,3 +483,12 @@
   - 新增 `tests/test_default_ports.py` 锁定默认端口。
 - 验证：
   - `.venv/bin/python -m pytest tests/test_default_ports.py -q`：`1 passed`。
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests && .venv/bin/python -m pytest -q`：`114 passed`。
+- Windows 同步：
+  - 提交：`a81d6a8 feat: promote native rpc service to port 5000`。
+  - Windows 已 `git pull --ff-only` 到 `a81d6a8`。
+  - 因 `UpdateAndRestart` 本次进程加载的是拉取前旧脚本，重启阶段仍尝试使用旧默认 `5004`；已改为显式 `FDTD_RPC_PORT=5000` 启动新服务。
+  - `5000` health/status：`ok=true`、`connected=false`，PID `39440`。
+  - `5000` mock 2×2：job_id `job_20260619_000703_metasurface_sweep`，`4 succeeded / 0 failed`，quality `pass`。
+- 注意：
+  - Windows 连接表仍短暂显示旧 `5004` listener / PID `37336`，但该 PID 已无进程对象，`5004` HTTP 不响应；当前可用服务为 `5000`。
