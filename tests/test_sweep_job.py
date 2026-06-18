@@ -29,6 +29,7 @@ def test_normalize_sweep_input_expands_point_count_shorthand():
     assert normalized["config"]["RATIO_LIST"] == [0.2, 0.8]
     assert normalized["config"]["PERIOD_LIST"] == [390e-9, 540e-9]
     assert normalized["config"]["BASE_HEIGHT"] == 700e-9
+    assert normalized["config"]["EXPRESS_MODE"] == 0
 
 
 def test_build_sweep_tasks_expands_stable_ratio_period_grid():

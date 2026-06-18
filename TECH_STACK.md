@@ -249,7 +249,7 @@ FDTD_RPC_URL=http://localhost:5004 python -m src.server
 ## 关键约束
 
 - **双模式**：`hide=False` (GUI 调试) / `hide=True` (headless 批量)。RDP 断开时 GUI 模式可能无法创建窗口。
-- **Headless 必开 express mode**：`fdtd.setnamed("FDTD", "express mode", 1)` 必须在每次 `load()` 后、`save()` 前设置，模板 load 会覆盖。
+- **express mode 必须匹配 resource**：CPU 模板/CPU resource 使用 `express mode=0`；GPU 才使用 `express mode=1`。`NativeSweepRunner` 在每次 `load()` 后、`save()` 前按 `EXPRESS_MODE` 设置，避免模板 load 覆盖运行时设置。
 - **脏会话清理**：每次 sweep 前 `fdtd.clearjobs()` 清理前次遗留作业队列。
 - **单实例**：FDTD 单机 license，RPC Server 为互斥点。
 - **文件路径**：Windows 路径必须正斜杠（C++ 层要求）。仿真结果在 Windows 端，通过 HTTP 下载回 Mac。

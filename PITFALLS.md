@@ -67,12 +67,12 @@
 - 修复：Phase 1 循环开始时调用 `fdtd.clearjobs()` 清理作业队列。
 - 预防：每次 sweep 开始前显式清理会话状态（clearjobs + switchtolayout）。写入 RPC Server 代码规范。
 
-## 2026-06-18 - Load(template) 覆盖 express mode 导致 0 valid（来源：联调实测）
+## 2026-06-18 - Load(template) 覆盖 express mode / resource 不匹配导致无效
 
 - 现象：Phase 3 报告 "0 valid, 4 missing"，所有仿真结果无效。GPU headless 模式下特别明显。
-- 根因：`fdtd.setnamed("FDTD", "express mode", 1)` 设在循环外面，但每次 `fdtd.load(template)` 会重新加载模板文件，模板里保存的 FDTD 设置会覆盖之前 setnamed 的值。
-- 修复：把 `setnamed("FDTD", "express mode", 1)` 移到循环内，`switchtolayout()` 之后、`save()` 之前。这样每个 .fsp 文件都会正确启用 express mode。
-- 预防：**模板 load 后必须重新设置运行时参数**。模板文件保存的是设计基准，不保存运行时优化参数。在 SOP 中写入此规则。
+- 根因：每次 `fdtd.load(template)` 会重新加载模板文件，模板里保存的 FDTD 设置会覆盖之前 setnamed 的值；同时 `express mode` 必须和 resource 匹配，CPU 模板/CPU resource 应为 `0`，GPU 才应为 `1`。
+- 修复：把 `setnamed("FDTD", "express mode", EXPRESS_MODE)` 移到循环内，`switchtolayout()` 之后、`save()` 之前。当前 CPU sweep 默认 `EXPRESS_MODE=0`。
+- 预防：**模板 load 后必须按 resource 重新设置运行时参数**。模板文件保存的是设计基准，不保存运行时优化参数。在 SOP 中写入此规则。
 
 ## 2026-06-18 - SSH 远程部署 RPC Server 代码不可靠（来源：联调实测）
 

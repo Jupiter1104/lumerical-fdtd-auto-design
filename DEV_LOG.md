@@ -400,3 +400,15 @@
   - 文档检查确认当前运行入口不再要求 `5005` / `FDTD_SWEEP_RPC_URL`。
 - 注意：
   - 目前只完成离线和文档切换；尚未声明真实原生 2×2 sweep 已通过。
+
+## 2026-06-18 - 修正 express mode 与 CPU/GPU resource 对应
+
+- 目标：避免当前 CPU 模板被代码强制改成 GPU express mode，导致真实仿真无法运行。
+- 背景：用户确认当前放入 Windows 项目内的 `base_model.fsp` 未勾选 express mode，resource 使用 CPU；`express mode=1` 对应 GPU，`0` 对应 CPU，不匹配会无法仿真。
+- 修改：
+  - `sweep.config.EXPRESS_MODE` 默认改为 `0`。
+  - `NativeSweepRunner` 每次 `load()` 后按 `EXPRESS_MODE` 设置 FDTD `express mode`，默认 CPU，只有显式配置才启用 GPU/`1`。
+  - 测试覆盖默认 CPU/0 和显式 GPU/1 两种路径。
+  - `AGENTS.md`、`SOP.md`、`TECH_STACK.md`、`PITFALLS.md` 修正旧的“headless 必开 express mode=1”说法。
+- 验证：
+  - 聚焦 express-mode 测试通过；待全量验证后同步 Windows。

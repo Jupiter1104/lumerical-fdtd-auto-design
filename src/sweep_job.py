@@ -20,6 +20,7 @@ DEFAULT_SWEEP_CONFIG = {
     "BASE_PERIOD": 470e-9,
     "FDTD_PROCESSES": 1,
     "FDTD_CAPACITY": 1,
+    "EXPRESS_MODE": 0,
 }
 DEFAULT_PHASES = [1, 2, 3]
 DEFAULT_RATIO_MIN = 0.2
@@ -75,6 +76,7 @@ def normalize_sweep_input(request: dict) -> dict:
     config["PERIOD_PTS"] = _as_positive_int(config.get("PERIOD_PTS"), 2)
     config["FDTD_PROCESSES"] = _as_positive_int(config.get("FDTD_PROCESSES"), 1) or 1
     config["FDTD_CAPACITY"] = _as_positive_int(config.get("FDTD_CAPACITY"), 1) or 1
+    config["EXPRESS_MODE"] = 1 if int(config.get("EXPRESS_MODE", 0)) else 0
     config["SWEEP_Y_AXIS"] = str(config.get("SWEEP_Y_AXIS") or "period")
     config["RATIO_LIST"] = _float_list(
         config.get("RATIO_LIST"),

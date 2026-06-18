@@ -95,10 +95,16 @@ class MissingSecondSResultFdtd(FakeFdtd):
         return True
 
 
-def create_real_job(tmp_path, phases=None):
+def create_real_job(tmp_path, phases=None, config=None):
     template = tmp_path / "templates" / "base_model.fsp"
     template.parent.mkdir(parents=True)
     template.write_bytes(b"template")
+    sweep_config = {
+        "RATIO_LIST": [0.2, 0.8],
+        "PERIOD_LIST": [390e-9],
+    }
+    if config:
+        sweep_config.update(config)
     store = JobStore(tmp_path / "jobs", code_version="test-sha")
     job = store.enqueue(
         {
@@ -107,10 +113,7 @@ def create_real_job(tmp_path, phases=None):
             "sweep": {
                 "template": str(template),
                 "phases": phases or [1, 2],
-                "config": {
-                    "RATIO_LIST": [0.2, 0.8],
-                    "PERIOD_LIST": [390e-9],
-                },
+                "config": sweep_config,
             },
             "approval": {"approved": True, "approved_for": "real_run"},
         }
@@ -140,7 +143,7 @@ def test_native_runner_generates_models_then_runs_queue_once(tmp_path):
     )
 
 
-def test_native_runner_sets_express_mode_after_every_template_load(tmp_path):
+def test_native_runner_defaults_to_cpu_express_mode_after_every_template_load(tmp_path):
     store, job = create_real_job(tmp_path)
     fdtd = FakeFdtd()
 
@@ -160,8 +163,17 @@ def test_native_runner_sets_express_mode_after_every_template_load(tmp_path):
             "setnamed",
             "FDTD",
             "express mode",
-            1,
+            0,
         ) in calls[load_index + 1 : next_save]
+
+
+def test_native_runner_can_enable_gpu_express_mode_explicitly(tmp_path):
+    store, job = create_real_job(tmp_path, config={"EXPRESS_MODE": 1})
+    fdtd = FakeFdtd()
+
+    NativeSweepRunner(FakeSession(fdtd), store).run(job["job_id"])
+
+    assert ("setnamed", "FDTD", "express mode", 1) in fdtd.calls
 
 
 def test_native_runner_reads_normalized_sweep_request(tmp_path):

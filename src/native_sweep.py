@@ -136,7 +136,7 @@ class NativeSweepRunner:
                 )
                 fdtd.load(str(template))
                 fdtd.switchtolayout()
-                fdtd.setnamed("FDTD", "express mode", 1)
+                fdtd.setnamed("FDTD", "express mode", config["EXPRESS_MODE"])
                 fdtd.setnamed("::model", "ratio", sample["ratio"])
                 fdtd.setnamed("::model", "height", sample["height"])
                 fdtd.setnamed("::model", "period", sample["period"])

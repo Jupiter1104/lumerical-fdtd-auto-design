@@ -94,7 +94,8 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5004
 3. `manifest.json` 会记录模板 `path`、`sha256`、`size_bytes` 和 `modified_at`；如果模板指纹变化，应创建新 job，不要静默 resume 旧 job。
 4. `NativeSweepRunner` 内：
    - `fdtd.clearjobs()` 在 Phase 1 循环前
-   - `fdtd.setnamed("FDTD", "express mode", 1)` 在每次 `load()` 后 `save()` 前
+   - `fdtd.setnamed("FDTD", "express mode", EXPRESS_MODE)` 在每次 `load()` 后 `save()` 前
+   - 当前 CPU 模板/resource 使用默认 `EXPRESS_MODE=0`；只有明确改为 GPU 时才设 `EXPRESS_MODE=1`
 5. 端口未被幽灵进程占用（`netstat -ano | findstr 5004`）。
 
 ## SOP-006 - 交付
