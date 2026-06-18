@@ -5,6 +5,7 @@
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
 - Windows 状态：`127.0.0.1:5004` 真实 v1 smoke 全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
+- Job 状态：`/jobs/start` 短 `real geometry-smoke` 已通过，`job_20260618_184622_geometry_smoke` 生成 `jobs\job_20260618_184622_geometry_smoke\models\task_0001.fsp`。
 - 过渡期：旧 `5003` Autosweep 服务与新 `5004` v1 服务并行；本文件只描述 `5004` v1。
 
 ## Envelope

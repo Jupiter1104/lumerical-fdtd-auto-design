@@ -295,5 +295,11 @@
 - 验证：
   - `.venv/bin/python -m compileall rpc_server.py src scripts tests`：通过。
   - `.venv/bin/python -m pytest -q`：`81 passed`。
+  - Windows `5004` 同步到 `74d1274` 并由本地 `restart_rpc.bat` 重启后，真实 `/jobs/start` `geometry-smoke` 通过：
+    - `job_id`: `job_20260618_184622_geometry_smoke`
+    - `state`: `succeeded`
+    - task 计数：`1 succeeded / 0 failed`
+    - 产物：`F:\lumerical-fdtd-auto-design\fdtd-auto-design\jobs\job_20260618_184622_geometry_smoke\models\task_0001.fsp`（462512 bytes）
+    - 收尾状态：`/status` 返回 `connected=false`，说明短 job 已释放会话
 - 后续：
-  - Windows 同步后用短 `real geometry-smoke` 验证 job 目录和 `.fsp` 产物。
+  - 将旧 sweep/后处理接入持久 job/task，并补质量报告和 evidence-first 结果回传。
