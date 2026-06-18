@@ -115,6 +115,20 @@ class SessionManager:
             )
         return self._fdtd
 
+    @staticmethod
+    def _get_version(fdtd) -> str:
+        """Read the solver version across Pythonic and raw v242 lumapi."""
+        getversion = getattr(fdtd, "getversion", None)
+        if callable(getversion):
+            return str(getversion())
+
+        try:
+            fdtd.eval("__rpc_version=getversion;")
+            return str(fdtd.getv("__rpc_version"))
+        except Exception:
+            logger.warning("Could not read the FDTD version.", exc_info=True)
+            return "unknown"
+
     def start(self, hide: bool = False) -> dict:
         """Start the only allowed FDTD session."""
         with self._lock:
@@ -128,8 +142,16 @@ class SessionManager:
             lumapi = _import_lumapi()
             try:
                 self._fdtd = lumapi.FDTD(hide=hide)
-                version = self._fdtd.getversion()
+                version = self._get_version(self._fdtd)
             except Exception:
+                if self._fdtd is not None:
+                    try:
+                        self._fdtd.close()
+                    except Exception:
+                        logger.warning(
+                            "Failed to close FDTD after session start error.",
+                            exc_info=True,
+                        )
                 self._fdtd = None
                 raise
 
@@ -161,7 +183,7 @@ class SessionManager:
                 "model_file": None,
             }
         try:
-            version = self._fdtd.getversion()
+            version = self._get_version(self._fdtd)
         except Exception:
             version = "unknown"
         return {

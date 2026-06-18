@@ -200,6 +200,50 @@ def test_duplicate_session_start_returns_conflict(server_module):
     manager._fdtd = None
 
 
+def test_raw_lumapi_version_fallback(server_module):
+    class RawFdtd:
+        def __init__(self):
+            self.commands = []
+
+        def eval(self, command):
+            self.commands.append(command)
+
+        def getv(self, name):
+            assert name == "__rpc_version"
+            return "2024 R2.3"
+
+    fdtd = RawFdtd()
+
+    assert server_module.SessionManager._get_version(fdtd) == "2024 R2.3"
+    assert fdtd.commands == ["__rpc_version=getversion;"]
+
+
+def test_version_probe_failure_does_not_break_session_start(
+    server_module, monkeypatch
+):
+    class RawFdtd:
+        def eval(self, command):
+            raise RuntimeError("unsupported")
+
+        def close(self):
+            pass
+
+    class FakeLumapi:
+        @staticmethod
+        def FDTD(hide=False):
+            return RawFdtd()
+
+    manager = server_module.SessionManager()
+    manager._fdtd = None
+    monkeypatch.setattr(server_module, "_import_lumapi", lambda: FakeLumapi)
+
+    result = manager.start(hide=True)
+
+    assert result["version"] == "unknown"
+    assert manager.is_connected is True
+    manager.close()
+
+
 def test_missing_model_file_returns_not_found(server_module, tmp_path):
     manager = server_module.SessionManager()
     manager._fdtd = object()
