@@ -126,3 +126,96 @@ def test_jobs_resume_returns_selected_tasks(client):
     assert response.status_code == 200
     assert payload["ok"] is True
     assert payload["task_ids"] == ["task_0001"]
+
+
+def test_jobs_start_mock_metasurface_sweep_writes_quality_and_evidence(client):
+    response = client.post(
+        "/jobs/start",
+        json={"mode": "mock", "job_type": "metasurface-sweep"},
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["status"]["state"] == "succeeded"
+    assert payload["summary"]["quality_report"]["conclusion"] == "pass"
+    assert (
+        payload["summary"]["evidence"]["download_policy"]["default_payload"]
+        == "evidence-only"
+    )
+
+
+def test_jobs_start_real_metasurface_sweep_requires_approval(client):
+    response = client.post(
+        "/jobs/start",
+        json={"mode": "real", "job_type": "metasurface-sweep"},
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 403
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "approval_required"
+
+
+def test_jobs_start_real_metasurface_sweep_uses_deployed_bridge(
+    server_module,
+    fake_session,
+    tmp_path,
+    monkeypatch,
+):
+    calls = []
+
+    def fake_run_deployed_sweep(task, job_dir, base_url):
+        calls.append({"task": task, "job_dir": job_dir, "base_url": base_url})
+        quality_path = job_dir / "quality_report.json"
+        evidence_path = job_dir / "evidence" / "index.json"
+        server_module.JobStore(job_dir.parent)._write_json(
+            quality_path,
+            {
+                "job_id": job_dir.name,
+                "conclusion": "pass",
+                "requires_human_review": True,
+            },
+        )
+        server_module.JobStore(job_dir.parent)._write_json(
+            evidence_path,
+            {
+                "job_id": job_dir.name,
+                "download_policy": {"default_payload": "evidence-only"},
+            },
+        )
+        return {
+            "quality_report": {"path": str(quality_path), "conclusion": "pass"},
+            "evidence": {"path": str(evidence_path)},
+            "remote_task_id": "sweep_fake",
+        }
+
+    monkeypatch.setenv("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5999")
+    monkeypatch.setattr(
+        server_module,
+        "run_deployed_sweep",
+        fake_run_deployed_sweep,
+        raising=False,
+    )
+    app = server_module.create_app(
+        fake_session,
+        job_store=server_module.JobStore(tmp_path / "jobs", code_version="test-sha"),
+    )
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "metasurface-sweep",
+            "approval": {"approved": True, "approved_for": "real_run"},
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["status"]["state"] == "succeeded"
+    assert payload["summary"]["quality_report"]["conclusion"] == "pass"
+    assert calls[0]["base_url"] == "http://127.0.0.1:5999"
+    assert calls[0]["task"]["operation"] == "metasurface-sweep"

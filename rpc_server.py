@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from src.job_store import JobError, JobStore
+from src.sweep_job import run_deployed_sweep
 
 logging.basicConfig(
     level=logging.INFO,
@@ -410,6 +411,25 @@ def _geometry_smoke_executor(session: SessionManager):
     return run
 
 
+def _metasurface_sweep_executor(base_url: str):
+    def run(task: dict, job_dir: Path) -> dict:
+        return run_deployed_sweep(task, job_dir, base_url=base_url)
+
+    return run
+
+
+def _job_executor(data: dict, session: SessionManager):
+    if data.get("mode") != "real":
+        return None
+    if data.get("job_type") == "geometry-smoke":
+        return _geometry_smoke_executor(session)
+    if data.get("job_type") == "metasurface-sweep":
+        return _metasurface_sweep_executor(
+            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5003")
+        )
+    return None
+
+
 def create_app(
     session_manager: Optional[SessionManager] = None,
     job_store: Optional[JobStore] = None,
@@ -566,11 +586,7 @@ def create_app(
     @app.post("/jobs/start")
     def jobs_start():
         data = _json_body()
-        executor = (
-            _geometry_smoke_executor(session)
-            if data.get("mode") == "real"
-            else None
-        )
+        executor = _job_executor(data, session)
         return _success(jobs.start(data, executor=executor))
 
     @app.get("/jobs/<job_id>")
@@ -584,11 +600,7 @@ def create_app(
     @app.post("/jobs/<job_id>/resume")
     def jobs_resume(job_id):
         data = _json_body()
-        executor = (
-            _geometry_smoke_executor(session)
-            if data.get("mode") == "real"
-            else None
-        )
+        executor = _job_executor(data, session)
         return _success(jobs.resume(job_id, executor=executor))
 
     return app
