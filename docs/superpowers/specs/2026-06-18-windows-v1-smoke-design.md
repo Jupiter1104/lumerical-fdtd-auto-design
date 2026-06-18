@@ -33,6 +33,7 @@ scripts/windows/manage_rpc.ps1
 共同约定：
 
 - 默认 Python：`F:\Program Files\Lumerical\v242\python\python.exe`。
+- 后台服务优先使用同目录 `pythonw.exe`，避免批处理窗口关闭时终止控制台 Python；依赖安装和 smoke 仍使用 `python.exe`。
 - 默认端口：`5004`。
 - 可通过环境变量 `FDTD_PYTHON` 和 `FDTD_RPC_PORT` 覆盖。
 - PID：`runtime\rpc_server.pid`。

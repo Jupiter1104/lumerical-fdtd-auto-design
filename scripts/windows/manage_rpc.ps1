@@ -12,6 +12,8 @@ $Python = if ($env:FDTD_PYTHON) {
 } else {
     "F:\Program Files\Lumerical\v242\python\python.exe"
 }
+$Pythonw = Join-Path (Split-Path $Python -Parent) "pythonw.exe"
+$Launcher = if (Test-Path $Pythonw) { $Pythonw } else { $Python }
 $Port = if ($env:FDTD_RPC_PORT) {
     [int]$env:FDTD_RPC_PORT
 } else {
@@ -66,7 +68,13 @@ function Start-Rpc {
         throw "rpc_server.py not found: $ServerScript"
     }
     if (Test-Path $PidFile) {
-        throw "PID file already exists: $PidFile. Run status or stop first."
+        $recordedProcess = Get-RecordedProcess
+        if ($recordedProcess) {
+            Assert-ManagedProcess $recordedProcess
+            throw "RPC Server is already running as PID $($recordedProcess.ProcessId)."
+        }
+        Write-Host "[INFO] Removing stale PID file."
+        Remove-Item -LiteralPath $PidFile -Force
     }
 
     $listener = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
@@ -83,7 +91,7 @@ function Start-Rpc {
         "--port", "$Port"
     )
     $process = Start-Process `
-        -FilePath $Python `
+        -FilePath $Launcher `
         -ArgumentList $arguments `
         -WorkingDirectory $ProjectRoot `
         -RedirectStandardOutput $StdoutLog `
