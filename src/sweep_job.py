@@ -1,27 +1,28 @@
 """Metasurface sweep job helpers.
 
-This module is pure Python and safe to import on Mac. Real solver work is
-delegated to the already-deployed sweep RPC service configured by URL.
+This module is pure Python and safe to import on Mac. It owns sweep input
+normalization, sample-grid expansion, and evidence artifacts.
 """
 
 import json
-import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-import requests
 
 
 DEFAULT_SWEEP_CONFIG = {
     "SWEEP_Y_AXIS": "period",
     "RATIO_PTS": 2,
     "PERIOD_PTS": 2,
+    "BASE_HEIGHT": 700e-9,
+    "BASE_PERIOD": 470e-9,
     "FDTD_PROCESSES": 1,
     "FDTD_CAPACITY": 1,
 }
 DEFAULT_PHASES = [1, 2, 3]
+DEFAULT_RATIO_MIN = 0.2
+DEFAULT_RATIO_MAX = 0.8
+DEFAULT_PERIOD_MIN = 390e-9
+DEFAULT_PERIOD_MAX = 540e-9
 
 
 def utc_now() -> str:
@@ -46,6 +47,23 @@ def _as_positive_int(value, default: int) -> int:
     return max(number, 0)
 
 
+def _linspace(start: float, stop: float, count: int) -> list:
+    if count <= 0:
+        return []
+    if count == 1:
+        return [float(start)]
+    step = (stop - start) / (count - 1)
+    return [float(start + step * index) for index in range(count)]
+
+
+def _float_list(value, default: list) -> list:
+    if value is None:
+        return list(default)
+    if not isinstance(value, list) or not value:
+        raise ValueError("Sweep parameter lists must be non-empty lists.")
+    return [float(item) for item in value]
+
+
 def normalize_sweep_input(request: dict) -> dict:
     sweep = request.get("sweep") or {}
     config = dict(DEFAULT_SWEEP_CONFIG)
@@ -55,6 +73,29 @@ def normalize_sweep_input(request: dict) -> dict:
     config["FDTD_PROCESSES"] = _as_positive_int(config.get("FDTD_PROCESSES"), 1) or 1
     config["FDTD_CAPACITY"] = _as_positive_int(config.get("FDTD_CAPACITY"), 1) or 1
     config["SWEEP_Y_AXIS"] = str(config.get("SWEEP_Y_AXIS") or "period")
+    config["RATIO_LIST"] = _float_list(
+        config.get("RATIO_LIST"),
+        _linspace(
+            DEFAULT_RATIO_MIN,
+            DEFAULT_RATIO_MAX,
+            config["RATIO_PTS"],
+        ),
+    )
+    config["PERIOD_LIST"] = _float_list(
+        config.get("PERIOD_LIST"),
+        _linspace(
+            DEFAULT_PERIOD_MIN,
+            DEFAULT_PERIOD_MAX,
+            config["PERIOD_PTS"],
+        ),
+    )
+    config["BASE_HEIGHT"] = float(config.get("BASE_HEIGHT", 700e-9))
+    config["BASE_PERIOD"] = float(config.get("BASE_PERIOD", 470e-9))
+    if config["SWEEP_Y_AXIS"] == "height":
+        config["HEIGHT_LIST"] = _float_list(
+            config.get("HEIGHT_LIST"),
+            [config["BASE_HEIGHT"]],
+        )
 
     phases = sweep.get("phases", DEFAULT_PHASES)
     if not isinstance(phases, list) or not phases:
@@ -67,18 +108,49 @@ def normalize_sweep_input(request: dict) -> dict:
         "config": config,
         "phases": phases,
         "hide": bool(sweep.get("hide", True)),
-        "template": str(sweep.get("template") or "base_model.fsp"),
+        "template": str(
+            sweep.get("template")
+            or "templates/metasurface/base_model.fsp"
+        ),
         "include_models": bool(sweep.get("include_models", False)),
     }
 
 
 def build_sweep_tasks(request: dict) -> list:
-    return [
-        {
-            "operation": "metasurface-sweep",
-            "input": normalize_sweep_input(request),
-        }
-    ]
+    sweep_input = normalize_sweep_input(request)
+    config = sweep_input["config"]
+    tasks = []
+
+    if config["SWEEP_Y_AXIS"] == "period":
+        for period in config["PERIOD_LIST"]:
+            for ratio in config["RATIO_LIST"]:
+                tasks.append(
+                    {
+                        "operation": "metasurface-sample",
+                        "input": {
+                            "sample_index": len(tasks),
+                            "ratio": ratio,
+                            "height": config["BASE_HEIGHT"],
+                            "period": period,
+                        },
+                    }
+                )
+    else:
+        for height in config["HEIGHT_LIST"]:
+            for ratio in config["RATIO_LIST"]:
+                tasks.append(
+                    {
+                        "operation": "metasurface-sample",
+                        "input": {
+                            "sample_index": len(tasks),
+                            "ratio": ratio,
+                            "height": height,
+                            "period": config["BASE_PERIOD"],
+                        },
+                    }
+                )
+
+    return tasks
 
 
 def _sample_counts(config: dict) -> dict:
@@ -88,25 +160,23 @@ def _sample_counts(config: dict) -> dict:
     return {"ratio_pts": ratio_pts, "period_pts": period_pts, "total": total}
 
 
-def run_mock_sweep(task: dict, job_dir: Path) -> dict:
-    sweep_input = task.get("input", {})
-    counts = _sample_counts(sweep_input.get("config", {}))
-    total = counts["total"]
-    run_result = {
-        "solver_status": "done",
-        "message": f"{total}/{total} valid, 0 missing",
-        "valid_count": total,
-        "missing_count": 0,
-        "total_count": total,
-        "phases": sweep_input.get("phases", DEFAULT_PHASES),
-        "result_files": ["results/sweep_summary.json"],
-        "figure_files": ["figures/mock_transmission_heatmap.png"]
-        if 4 in sweep_input.get("phases", [])
-        else [],
-        "model_files": [],
-        "remote_task_id": None,
+def run_mock_sample(task: dict, job_dir: Path) -> dict:
+    sample = task["input"]
+    result_path = Path(job_dir) / "results" / f"{task['task_id']}.json"
+    result = {
+        "task_id": task["task_id"],
+        **sample,
+        "transmission": 0.8,
+        "phase_rad": 0.0,
+        "synthetic": True,
     }
-    return write_sweep_artifacts(job_dir, task, run_result)
+    _write_json(result_path, result)
+    return {"result_file": str(result_path), **result}
+
+
+def run_mock_sweep(task: dict, job_dir: Path) -> dict:
+    """Compatibility shim while JobStore transitions to sample operations."""
+    return run_mock_sample(task, job_dir)
 
 
 def _quality_conclusion(run_result: dict) -> tuple:
@@ -238,97 +308,3 @@ def write_sweep_artifacts(job_dir: Path, task: dict, run_result: dict) -> dict:
         },
         "remote_task_id": run_result.get("remote_task_id"),
     }
-
-
-def _parse_counts(message: str) -> dict:
-    match = re.search(r"(\d+)\s*/\s*(\d+)\s+valid.*?(\d+)\s+missing", message or "")
-    if not match:
-        return {"valid_count": 0, "total_count": 0, "missing_count": 0}
-    return {
-        "valid_count": int(match.group(1)),
-        "total_count": int(match.group(2)),
-        "missing_count": int(match.group(3)),
-    }
-
-
-def _request_json(session, method: str, url: str, **kwargs) -> dict:
-    response = session.request(method, url, **kwargs)
-    payload = response.json()
-    if response.status_code >= 400 or payload.get("ok") is False:
-        raise RuntimeError(f"{method} {url} failed: {payload}")
-    return payload
-
-
-def run_deployed_sweep(
-    task: dict,
-    job_dir: Path,
-    base_url: str,
-    poll_interval: float = 10.0,
-    timeout_seconds: float = 3600.0,
-    session: Optional[requests.Session] = None,
-) -> dict:
-    http = session or requests.Session()
-    base = base_url.rstrip("/")
-    sweep_input = task.get("input", {})
-
-    health = _request_json(http, "GET", f"{base}/health", timeout=30)
-    if not (health.get("fdtd_connected") and health.get("matlab_connected")):
-        _request_json(
-            http,
-            "POST",
-            f"{base}/session/start",
-            json={"hide": bool(sweep_input.get("hide", True))},
-            timeout=120,
-        )
-
-    _request_json(
-        http,
-        "POST",
-        f"{base}/sweep/config",
-        json=sweep_input.get("config", {}),
-        timeout=60,
-    )
-    started = _request_json(
-        http,
-        "POST",
-        f"{base}/sweep/run",
-        json={"phases": sweep_input.get("phases", DEFAULT_PHASES)},
-        timeout=120,
-    )
-    remote_task_id = started.get("task_id")
-    deadline = time.time() + timeout_seconds
-    final_task = {}
-
-    while time.time() < deadline:
-        status = _request_json(
-            http,
-            "GET",
-            f"{base}/sweep/status",
-            params={"task_id": remote_task_id},
-            timeout=60,
-        )
-        final_task = status.get("task", {})
-        if final_task.get("status") in {"done", "error"}:
-            break
-        time.sleep(poll_interval)
-    else:
-        raise RuntimeError(f"Sweep task {remote_task_id} timed out.")
-
-    result_listing = _request_json(http, "GET", f"{base}/results", timeout=60)
-    files = result_listing.get("files", {})
-    message = final_task.get("message", "")
-    counts = _parse_counts(message)
-    run_result = {
-        "solver_status": final_task.get("status", "unknown"),
-        "message": message,
-        "remote_task_id": remote_task_id,
-        "phases": sweep_input.get("phases", DEFAULT_PHASES),
-        "result_files": [f"results/{name}" for name in files.get("results", [])],
-        "figure_files": [f"figures/{name}" for name in files.get("figures", [])],
-        "model_files": [f"models/{name}" for name in files.get("models", [])],
-        **counts,
-    }
-    outputs = write_sweep_artifacts(job_dir, task, run_result)
-    if run_result["solver_status"] == "error":
-        raise RuntimeError(message or f"Sweep task {remote_task_id} failed.")
-    return outputs
