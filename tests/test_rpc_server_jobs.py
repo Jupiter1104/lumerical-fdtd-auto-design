@@ -1,5 +1,6 @@
 import importlib
 import sys
+import threading
 
 import pytest
 
@@ -157,49 +158,26 @@ def test_jobs_start_real_metasurface_sweep_requires_approval(client):
     assert payload["error"]["type"] == "approval_required"
 
 
-def test_jobs_start_real_metasurface_sweep_uses_deployed_bridge(
+def test_real_sweep_start_returns_202_before_runner_finishes(
     server_module,
     fake_session,
     tmp_path,
-    monkeypatch,
 ):
-    calls = []
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    started = threading.Event()
+    release = threading.Event()
 
-    def fake_run_deployed_sweep(task, job_dir, base_url):
-        calls.append({"task": task, "job_dir": job_dir, "base_url": base_url})
-        quality_path = job_dir / "quality_report.json"
-        evidence_path = job_dir / "evidence" / "index.json"
-        server_module.JobStore(job_dir.parent)._write_json(
-            quality_path,
-            {
-                "job_id": job_dir.name,
-                "conclusion": "pass",
-                "requires_human_review": True,
-            },
-        )
-        server_module.JobStore(job_dir.parent)._write_json(
-            evidence_path,
-            {
-                "job_id": job_dir.name,
-                "download_policy": {"default_payload": "evidence-only"},
-            },
-        )
-        return {
-            "quality_report": {"path": str(quality_path), "conclusion": "pass"},
-            "evidence": {"path": str(evidence_path)},
-            "remote_task_id": "sweep_fake",
-        }
+    class BlockingRunner:
+        def run(self, job_id):
+            started.job_id = job_id
+            started.set()
+            release.wait(timeout=2)
 
-    monkeypatch.setenv("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5999")
-    monkeypatch.setattr(
-        server_module,
-        "run_deployed_sweep",
-        fake_run_deployed_sweep,
-        raising=False,
-    )
     app = server_module.create_app(
         fake_session,
         job_store=server_module.JobStore(tmp_path / "jobs", code_version="test-sha"),
+        sweep_runner=BlockingRunner(),
     )
     app.config.update(TESTING=True)
     client = app.test_client()
@@ -209,48 +187,146 @@ def test_jobs_start_real_metasurface_sweep_uses_deployed_bridge(
         json={
             "mode": "real",
             "job_type": "metasurface-sweep",
+            "sweep": {
+                "template": str(template),
+                "config": {
+                    "RATIO_LIST": [0.2],
+                    "PERIOD_LIST": [390e-9],
+                },
+            },
             "approval": {"approved": True, "approved_for": "real_run"},
         },
     )
-    payload = response.get_json()
 
-    assert response.status_code == 200
-    assert payload["status"]["state"] == "succeeded"
-    assert payload["summary"]["quality_report"]["conclusion"] == "pass"
-    assert calls[0]["base_url"] == "http://127.0.0.1:5999"
-    assert calls[0]["task"]["operation"] == "metasurface-sweep"
+    try:
+        payload = response.get_json()
+        assert response.status_code == 202
+        assert payload["ok"] is True
+        assert payload["state"] == "queued"
+        assert started.wait(timeout=1)
+        assert payload["job_id"] == started.job_id
+    finally:
+        release.set()
 
 
-def test_real_metasurface_sweep_defaults_to_port_5005(
+def test_real_sweep_rejects_second_start_while_running(
     server_module,
     fake_session,
     tmp_path,
-    monkeypatch,
 ):
-    calls = []
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    started = threading.Event()
+    release = threading.Event()
 
-    def fake_run_deployed_sweep(task, job_dir, base_url):
-        calls.append(base_url)
-        return {"remote_task_id": "sweep_fake"}
+    class BlockingRunner:
+        def run(self, job_id):
+            started.set()
+            release.wait(timeout=2)
 
-    monkeypatch.delenv("FDTD_SWEEP_RPC_URL", raising=False)
-    monkeypatch.setattr(
-        server_module,
-        "run_deployed_sweep",
-        fake_run_deployed_sweep,
-    )
-
-    executor = server_module._job_executor(
-        {"mode": "real", "job_type": "metasurface-sweep"},
+    app = server_module.create_app(
         fake_session,
+        job_store=server_module.JobStore(tmp_path / "jobs", code_version="test-sha"),
+        sweep_runner=BlockingRunner(),
     )
-    executor(
-        {
-            "task_id": "task_0001",
-            "operation": "metasurface-sweep",
-            "input": {},
+    app.config.update(TESTING=True)
+    client = app.test_client()
+    body = {
+        "mode": "real",
+        "job_type": "metasurface-sweep",
+        "sweep": {
+            "template": str(template),
+            "config": {"RATIO_LIST": [0.2], "PERIOD_LIST": [390e-9]},
         },
-        tmp_path,
+        "approval": {"approved": True, "approved_for": "real_run"},
+    }
+
+    try:
+        first = client.post("/jobs/start", json=body)
+        assert first.status_code == 202
+        assert started.wait(timeout=1)
+
+        second = client.post("/jobs/start", json={**body, "idempotency_key": "two"})
+
+        assert second.status_code == 409
+        assert second.get_json()["error"]["type"] == "sweep_already_running"
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/model/load", {"file_path": "a.fsp"}),
+        ("/geometry/rectangle", {"name": "wg"}),
+        ("/session/close", {}),
+    ],
+)
+def test_destructive_routes_reject_while_real_sweep_is_running(
+    server_module,
+    fake_session,
+    tmp_path,
+    path,
+    body,
+):
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingRunner:
+        def run(self, job_id):
+            started.set()
+            release.wait(timeout=2)
+
+    app = server_module.create_app(
+        fake_session,
+        job_store=server_module.JobStore(tmp_path / "jobs", code_version="test-sha"),
+        sweep_runner=BlockingRunner(),
+    )
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    try:
+        response = client.post(
+            "/jobs/start",
+            json={
+                "mode": "real",
+                "job_type": "metasurface-sweep",
+                "sweep": {
+                    "template": str(template),
+                    "config": {"RATIO_LIST": [0.2], "PERIOD_LIST": [390e-9]},
+                },
+                "approval": {"approved": True, "approved_for": "real_run"},
+            },
+        )
+        assert response.status_code == 202
+        assert started.wait(timeout=1)
+
+        blocked = client.post(path, json=body)
+
+        assert blocked.status_code == 409
+        assert blocked.get_json()["error"]["type"] == "sweep_running"
+    finally:
+        release.set()
+
+
+def test_real_metasurface_sweep_rejects_missing_template(
+    client,
+    tmp_path,
+):
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "metasurface-sweep",
+            "sweep": {
+                "template": str(tmp_path / "missing.fsp"),
+                "config": {"RATIO_LIST": [0.2], "PERIOD_LIST": [390e-9]},
+            },
+            "approval": {"approved": True, "approved_for": "real_run"},
+        },
     )
 
-    assert calls == ["http://127.0.0.1:5005"]
+    assert response.status_code == 400
+    assert response.get_json()["error"]["type"] == "template_not_found"

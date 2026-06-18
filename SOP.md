@@ -44,24 +44,27 @@
    ```
 3. 建立 SSH 隧道（推荐）或直连：
    ```bash
-   ssh -L 5005:localhost:5005 32482@192.168.31.26
    ssh -L 5004:localhost:5004 32482@192.168.31.26
-   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5005
+   # 或直连: export FDTD_RPC_URL=http://192.168.31.26:5004
    ```
 4. 验证连接：
    ```bash
-   curl http://localhost:5005/health
+   curl http://localhost:5004/health
    ```
 
-## SOP-004 - 端到端验证
+## SOP-004 - 原生 metasurface sweep 端到端验证
 
 1. 确保 Windows RPC Server 正在运行。
-2. Session 已启动（`fdtd_connected=true`）。
-3. Mac 端运行 smoke test：
-   ```bash
-   python scripts/smoke_test.py --rpc http://localhost:5005
-   ```
-4. 预期：4/4 valid, 0 missing。
+2. 确认 `templates/metasurface/base_model.fsp` 已安装。
+3. 先走 mock 或 plan；真实运行前必须获得审批摘要确认。
+4. Mac 端通过 `/jobs/start` 启动 `real metasurface-sweep`，预期 HTTP 202 返回 `job_id`。
+5. 轮询 `/jobs/<job_id>` 和 `/jobs/<job_id>/tasks`，完成后检查 quality/evidence。
+
+旧 `scripts/smoke_test.py` 仅用于历史 Autosweep baseline，不再作为新 v1 验收入口。
+
+```bash
+python scripts/v1_smoke_test.py --rpc http://localhost:5004
+```
 
 ## SOP-004b - 新 v1 smoke 验证
 
@@ -77,10 +80,10 @@
 
 1. `base_model.fsp` 模板完好，含 `::model::s_params` 分析组。
 2. 模板参数 `ratio`、`height`、`period` 已定义。
-3. RPC Server `_run_pipeline` 内：
+3. `NativeSweepRunner` 内：
    - `fdtd.clearjobs()` 在 Phase 1 循环前
    - `fdtd.setnamed("FDTD", "express mode", 1)` 在每次 `load()` 后 `save()` 前
-4. 端口未被幽灵进程占用（`netstat -ano | findstr 5005`）。
+4. 端口未被幽灵进程占用（`netstat -ano | findstr 5004`）。
 
 ## SOP-006 - 交付
 
@@ -107,7 +110,7 @@
 5. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
 6. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
-当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入 quality report 和 evidence index，真实执行通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。首版 resume 仍是高层 task 级别，不是逐 sample 级别。
+当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入逐 sample task、原生 Phase 1-4、quality report 和 evidence index。真实 sweep 由 `/jobs/start` 异步返回 `202 + job_id`。
 
 ## SOP-009 - RPC/MCP 契约变更
 

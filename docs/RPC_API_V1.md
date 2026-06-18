@@ -5,8 +5,8 @@
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
 - Windows 状态：`127.0.0.1:5004` 真实 v1 smoke 全流程通过，生成 `smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
-- Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持 `plan/mock/real` 的 job 形态、质量报告和 evidence index。真实 sweep 通过 `FDTD_SWEEP_RPC_URL` 桥接旧 `5005` baseline。
-- 过渡期：旧 `5005` Autosweep 服务与新 `5004` v1 服务并行；本文件只描述 `5004` v1。
+- Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持逐 sample task、原生 Phase 1-4、质量报告和 evidence index。真实 sweep 在新 `5004` v1 服务内异步执行，启动成功返回 HTTP 202。
+- 过渡期：旧 Autosweep 只作为历史 baseline，不再是仓库内 `rpc_server.py` 的运行时依赖；本文件只描述新 v1 服务。
 
 ## Envelope
 
@@ -58,7 +58,7 @@
 | POST | `/geometry/rectangle` | 添加矩形 |
 | POST | `/geometry/circle` | 添加圆形 |
 | POST | `/jobs/plan` | 创建 planned job，落盘 task 清单但不执行 |
-| POST | `/jobs/start` | 创建并执行 mock 或 real job；支持 `geometry-smoke` 和 `metasurface-sweep` |
+| POST | `/jobs/start` | 创建并执行 mock 或 real job；`real metasurface-sweep` 异步返回 `202 + job_id` |
 | GET | `/jobs/<job_id>` | 读取 manifest/status/summary |
 | GET | `/jobs/<job_id>/tasks` | 读取 task 摘要 |
 | POST | `/jobs/<job_id>/resume` | 仅重试 pending/failed task |
@@ -97,6 +97,6 @@
 
 - `/debug/eval` 仅用于诊断，不是自然语言建模入口。
 - 文件路径越界限制将在持久 job 层实现；当前 v1 服务仅在受控本地/隧道环境使用。
-- `/jobs/*` 已实现 plan、start、status、tasks 和 resume；支持 `geometry-smoke` 和高层 `metasurface-sweep` task。
-- `metasurface-sweep` 首版把整个旧 sweep pipeline 作为一个高层 task；逐 sample resume、取消、并发队列和优化仍是后续工作。
-- 旧 sweep API `/sweep/*`、`/results/*` 属于已部署 Autosweep 扩展；仓库通用 v1 Server 当前不承载完整 sweep 引擎。
+- `/jobs/*` 已实现 plan、start、status、tasks 和 resume；支持 `geometry-smoke` 和逐 sample `metasurface-sweep` task。
+- `real metasurface-sweep` 同一时间只允许一个活动 job；运行中会拒绝破坏性 session/model/geometry/debug/simulation 操作。
+- 取消、并发队列、优化和模板指纹 resume 保护仍是后续工作。

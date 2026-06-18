@@ -20,7 +20,8 @@ from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from src.job_store import JobError, JobStore
-from src.sweep_job import run_deployed_sweep
+from src.native_sweep import NativeSweepRunner
+from src.sweep_job import write_job_artifacts
 
 logging.basicConfig(
     level=logging.INFO,
@@ -411,33 +412,108 @@ def _geometry_smoke_executor(session: SessionManager):
     return run
 
 
-def _metasurface_sweep_executor(base_url: str):
-    def run(task: dict, job_dir: Path) -> dict:
-        return run_deployed_sweep(task, job_dir, base_url=base_url)
-
-    return run
-
-
 def _job_executor(data: dict, session: SessionManager):
     if data.get("mode") != "real":
         return None
     if data.get("job_type") == "geometry-smoke":
         return _geometry_smoke_executor(session)
-    if data.get("job_type") == "metasurface-sweep":
-        return _metasurface_sweep_executor(
-            os.environ.get("FDTD_SWEEP_RPC_URL", "http://127.0.0.1:5005")
-        )
     return None
+
+
+class SweepCoordinator:
+    def __init__(self, runner):
+        self.runner = runner
+        self._lock = threading.Lock()
+        self._active_job_id = None
+
+    @property
+    def is_running(self) -> bool:
+        with self._lock:
+            return self._active_job_id is not None
+
+    def start(self, job_id: str) -> None:
+        with self._lock:
+            if self._active_job_id is not None:
+                raise RpcError(
+                    "sweep_already_running",
+                    f"Sweep {self._active_job_id} is already running.",
+                    409,
+                    {"active_job_id": self._active_job_id},
+                )
+            self._active_job_id = job_id
+
+        def worker():
+            try:
+                self.runner.run(job_id)
+            except Exception:
+                logger.exception("Native sweep job failed: %s", job_id)
+            finally:
+                with self._lock:
+                    self._active_job_id = None
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+
+def _is_real_metasurface_sweep(data: dict) -> bool:
+    return data.get("mode") == "real" and data.get("job_type") == "metasurface-sweep"
+
+
+def _validate_real_sweep_request(data: dict) -> None:
+    approval = data.get("approval") or {}
+    if (
+        approval.get("approved") is not True
+        or approval.get("approved_for") != "real_run"
+    ):
+        raise JobError(
+            "approval_required",
+            "Real jobs require explicit approval.",
+            403,
+        )
+    sweep = data.get("sweep") or {}
+    template = Path(
+        sweep.get("template")
+        or "templates/metasurface/base_model.fsp"
+    )
+    if not template.exists():
+        raise RpcError(
+            "template_not_found",
+            f"Sweep template not found: {template}",
+            400,
+            {"template": str(template)},
+        )
+
+
+def _write_mock_metasurface_artifacts(jobs: JobStore, job: dict) -> dict:
+    write_job_artifacts(
+        Path(job["job_dir"]),
+        job_id=job["job_id"],
+        expected_count=job["task_count"],
+        include_models=False,
+    )
+    return jobs.finalize(job["job_id"])
 
 
 def create_app(
     session_manager: Optional[SessionManager] = None,
     job_store: Optional[JobStore] = None,
+    sweep_runner=None,
 ) -> Flask:
     """Create a testable Flask app with an injectable session backend."""
     app = Flask(__name__)
     session = session_manager or SessionManager()
     jobs = job_store or JobStore()
+    jobs.recover_interrupted_jobs()
+    runner = sweep_runner or NativeSweepRunner(session, jobs)
+    sweeps = SweepCoordinator(runner)
+
+    def reject_during_sweep() -> None:
+        if sweeps.is_running:
+            raise RpcError(
+                "sweep_running",
+                "Operation is unavailable while a real sweep is running.",
+                409,
+            )
 
     @app.errorhandler(RpcError)
     def handle_rpc_error(error):
@@ -505,29 +581,34 @@ def create_app(
 
     @app.post("/session/start")
     def session_start():
+        reject_during_sweep()
         data = _json_body()
         return _success(session.start(hide=bool(data.get("hide", False))))
 
     @app.post("/session/close")
     @app.post("/session/stop")
     def session_close():
+        reject_during_sweep()
         return _success(session.close())
 
     @app.post("/model/save")
     @app.post("/file/save")
     def model_save():
+        reject_during_sweep()
         data = _json_body()
         return _success(session.save(data.get("file_path")))
 
     @app.post("/model/load")
     @app.post("/file/load")
     def model_load():
+        reject_during_sweep()
         data = _json_body()
         return _success(session.load(_required(data, "file_path")))
 
     @app.post("/debug/eval")
     @app.post("/eval")
     def debug_eval():
+        reject_during_sweep()
         data = _json_body()
         return _success(session.eval(_required(data, "cmd")))
 
@@ -540,6 +621,7 @@ def create_app(
     @app.post("/debug/setv")
     @app.post("/setv")
     def debug_setv():
+        reject_during_sweep()
         data = _json_body()
         name = _required(data, "name")
         return _success(session.setv(name, data.get("value")))
@@ -547,6 +629,7 @@ def create_app(
     @app.post("/simulation/run")
     @app.post("/sim/run")
     def simulation_run():
+        reject_during_sweep()
         return _success(session.run())
 
     @app.post("/simulation/result")
@@ -567,16 +650,19 @@ def create_app(
     @app.post("/geometry/fdtd-region")
     @app.post("/geom/addfdtd")
     def geometry_fdtd_region():
+        reject_during_sweep()
         return _success(session.addfdtd(**_json_body()))
 
     @app.post("/geometry/rectangle")
     @app.post("/geom/addrect")
     def geometry_rectangle():
+        reject_during_sweep()
         return _success(session.addrect(**_json_body()))
 
     @app.post("/geometry/circle")
     @app.post("/geom/addcircle")
     def geometry_circle():
+        reject_during_sweep()
         return _success(session.addcircle(**_json_body()))
 
     @app.post("/jobs/plan")
@@ -586,8 +672,16 @@ def create_app(
     @app.post("/jobs/start")
     def jobs_start():
         data = _json_body()
+        if _is_real_metasurface_sweep(data):
+            _validate_real_sweep_request(data)
+            job = jobs.enqueue(data)
+            sweeps.start(job["job_id"])
+            return _success(job, status_code=202)
         executor = _job_executor(data, session)
-        return _success(jobs.start(data, executor=executor))
+        job = jobs.start(data, executor=executor)
+        if data.get("mode") == "mock" and data.get("job_type") == "metasurface-sweep":
+            job = _write_mock_metasurface_artifacts(jobs, job)
+        return _success(job)
 
     @app.get("/jobs/<job_id>")
     def jobs_get(job_id):

@@ -45,7 +45,7 @@
   - 路径：`F:\Program Files\Lumerical\v242\python\python.exe`
   - API 路径：`F:\Program Files\Lumerical\v242\api\python`（通过 `sys.path.append` 导入）
 - **Lumerical**：v242，raw `lumapi` 模块（非 PyLumerical）
-- **MATLAB**：R2024b Engine for Python（Phase 4 后处理热力图）
+- **MATLAB**：R2024b Engine for Python（保留给旧 baseline 和未来扩展；新原生 Phase 4 使用标准库 CSV/JSON/SVG）
 - RPC 框架：**Flask**
 - 依赖（安装在 Lumerical 自带 Python 中）：
   - `flask`：HTTP RPC 服务
@@ -53,9 +53,9 @@
   - `matlab.engine`：MATLAB Engine
   - `numpy`、`scipy`：数值计算 + `.mat` 输出
 
-### 当前已部署 Sweep RPC API
+### 历史 Sweep RPC API
 
-以下端点描述 Windows 上已验证的超表面 sweep baseline，不代表通用 `rpc_server.py` 和目标 API v1 已完成统一。
+以下端点描述 Windows 上曾验证过的旧超表面 sweep baseline。新 `rpc_server.py` 不再桥接该服务；原生 `metasurface-sweep` 已纳入 API v1 `/jobs/start`。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
@@ -70,7 +70,7 @@
 | GET | `/results` | 列出 results/ 和 figures/ 目录 |
 | GET | `/results/<path>` | 下载结果文件 |
 
-该 baseline 返回格式为 `{"ok": true/false, ...}`。仓库内通用 Server、Client 和 MCP 已在 2026-06-18 统一为 API v1；旧 sweep Server 与新 v1 Server 暂时并行。
+该 baseline 返回格式为 `{"ok": true/false, ...}`。它仅作为历史参考，不是当前 v1 运行时依赖。
 
 ### RPC API v1 契约
 
@@ -83,7 +83,7 @@
 - `lumapi` 延迟到 `/session/start` 时导入，因此 Mac 可在无 Lumerical 环境运行契约测试。
 - raw v242 没有 `fdtd.getversion()` Python 方法，版本读取通过 script command `getversion` 兼容。
 - raw lumapi `fdtd.close()` 可能在窗口关闭后不返回；`/session/close` 先摘除 RPC 会话，再后台关闭后端，超时返回 `close_state=timed_out`。
-- `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和 `metasurface-sweep`。真实 `metasurface-sweep` 通过环境变量 `FDTD_SWEEP_RPC_URL` 桥接已部署 `5005` Autosweep baseline。
+- `/jobs/*` v1 已实现：plan、start、status、tasks、resume；支持 `geometry-smoke` 和逐 sample `metasurface-sweep`。真实 `metasurface-sweep` 由新服务内的 `NativeSweepRunner` 异步执行。
 - 旧 `/session/stop`、`/sim/*`、`/geom/*` 等路由仅在 Server 端作为弃用别名保留；Client/MCP 只调用 v1。
 - 文件参数限制到 Windows workspace/job root 仍需后续强化；当前通用 model 端点仍需受控网络环境。
 - 通用 `/debug/eval` 仅作为调试入口，不作为默认自然语言建模入口。
@@ -194,26 +194,15 @@ python3 -m venv .venv
 .venv/bin/python -m pytest -q
 ```
 
-过渡期限制：同一个 MCP 入口目前注册了 sweep 工具和通用 v1 工具，但 Windows 侧有两个不同服务：
-
-- `5005`：旧 Autosweep 服务，适合 `fdtd_sweep_*` 和 `fdtd_results_*`。
-- `5004`：新 API v1 服务，适合 session/model/geometry/debug smoke。
-
-在持久 job/task 合并前，不要假设一个 `FDTD_RPC_URL` 同时支持两类工具。
+过渡期限制：新 API v1 默认仍在 `5004` 开发验证；真实 2×2 原生 sweep 通过后再切默认端口到 `5000`。
 
 ## 连接方式
 
 ```bash
-# === 旧 sweep baseline（已验证 4/4 valid，端口按 Windows 现状确认） ===
-export FDTD_RPC_URL=http://192.168.31.26:5005
-
-# === 新 v1 smoke / 通用建模测试（在 Windows 本机） ===
+# === 新 v1 smoke / 通用建模 / 原生 sweep（在 Windows 本机） ===
 set FDTD_RPC_URL=http://127.0.0.1:5004
 
-# === SSH 隧道（按端口选择） ===
-ssh -L 5005:localhost:5005 32482@192.168.31.26
-export FDTD_RPC_URL=http://localhost:5005
-
+# === SSH 隧道 ===
 ssh -L 5004:localhost:5004 32482@192.168.31.26
 export FDTD_RPC_URL=http://localhost:5004
 ```
@@ -237,14 +226,11 @@ F:\Program Files\Lumerical\v242\python\python.exe scripts\v1_smoke_test.py
 # 安装依赖
 pip install mcp requests
 
-# 旧 sweep smoke
-python scripts/smoke_test.py --rpc http://localhost:5005
-
 # 新 v1 smoke 可通过 SSH 隧道触发，但 GUI 可见性取决于 Windows 桌面/RDP 会话
 python scripts/v1_smoke_test.py --rpc http://localhost:5004
 
-# 启动 MCP Server（供 Claude Code / Hermes 调用；按目标选择 5005 或 5004）
-FDTD_RPC_URL=http://localhost:5005 python -m src.server
+# 启动 MCP Server（供 Claude Code / Hermes 调用）
+FDTD_RPC_URL=http://localhost:5004 python -m src.server
 ```
 
 ## 环境变量
@@ -254,7 +240,6 @@ FDTD_RPC_URL=http://localhost:5005 python -m src.server
 | `FDTD_RPC_URL` | Mac | Windows RPC Server 地址 |
 | `FDTD_PYTHON` | Windows | 管理脚本使用的 Lumerical Python，默认 `F:\Program Files\Lumerical\v242\python\python.exe` |
 | `FDTD_RPC_PORT` | Windows | 新 v1 服务端口，默认 `5004` |
-| `FDTD_SWEEP_RPC_URL` | Windows | 真实 sweep bridge 地址，默认 `http://127.0.0.1:5005` |
 | `LUMAPI_PATH` | Windows | raw lumapi API 路径覆盖；默认从 Lumerical Python 相对路径推断 |
 
 ## 关键约束

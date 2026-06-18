@@ -3,10 +3,11 @@
 Status note: the standard workflow below describes the target production
 workflow. The current MCP surface registers session, model, geometry, sweep,
 results, export, and knowledge tools. Job/task endpoints support persistent
-`geometry-smoke` and high-level `metasurface-sweep` workflows. Sweep jobs
-write a quality report and an evidence-first index; real sweep execution
-bridges the deployed Autosweep baseline. Sample-level resume, optimization,
-and cancellation are not yet available.
+`geometry-smoke` and sample-level `metasurface-sweep` workflows. Sweep jobs
+write a quality report and an evidence-first index; real metasurface sweeps
+start asynchronously through `/jobs/start` and run inside the v1 RPC service.
+Optimization, cancellation, and template-fingerprint resume protection are
+not yet available.
 
 ## Standard Workflow
 

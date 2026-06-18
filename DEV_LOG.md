@@ -354,3 +354,19 @@
   - `.venv/bin/python -m compileall -q src/sweep_job.py src/native_sweep.py tests/test_sweep_job.py tests/test_native_sweep.py`：通过。
 - 后续：
   - 接入 Flask 异步协调器，移除旧 Autosweep bridge 依赖，并恢复全量离线测试。
+
+## 2026-06-18 - Flask `/jobs/start` 接入原生异步 sweep
+
+- 目标：把 `real metasurface-sweep` 从旧 Autosweep bridge 切换为新项目内的 `NativeSweepRunner`，并保持长任务异步。
+- 修改：
+  - `rpc_server.py` 移除 `run_deployed_sweep` / `FDTD_SWEEP_RPC_URL` bridge 路径。
+  - 新增 `SweepCoordinator`，同一时间只允许一个 real metasurface sweep；`/jobs/start` 先落盘 job，再返回 HTTP 202 和 `job_id`，后台线程执行原生 Phase 1-4。
+  - sweep 活跃时拒绝破坏性 session/model/geometry/debug/simulation 操作，返回 `sweep_running`。
+  - `mock metasurface-sweep` 保持同步执行，并补写 CSV、quality report、SVG 和 evidence index。
+  - README、RPC API v1、TECH_STACK、SOP 和 workflow prompt 同步改为原生 v1 sweep 口径。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`110 passed`。
+  - `rg "run_deployed_sweep|FDTD_SWEEP_RPC_URL|_metasurface_sweep_executor|5005" rpc_server.py src tests`：无匹配。
+- 后续：
+  - 模板安装/指纹校验；同步 Windows 后在 `5004` 做真实 2×2 原生 sweep 验证。
