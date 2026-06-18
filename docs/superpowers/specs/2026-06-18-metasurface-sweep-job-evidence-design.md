@@ -1,217 +1,296 @@
-# Metasurface Sweep Job Evidence 设计
+# 原生 Metasurface Sweep Job 设计
+
+## 决策
+
+新项目不再调用、修复或依赖旧 Autosweep RPC 服务。
+
+开发和真实 2×2 验证期间，新 API v1 服务继续使用 `5004`。原生 sweep 通过验证后，将新项目管理脚本和 Server 的默认端口切换为 `5000`。
+
+旧项目只允许作为一次性的已验证算法与模板来源。模板复制进新项目后，运行时不得读取旧项目目录、端口或结果服务。
 
 ## 背景
 
-当前项目有两条已经验证过的链路：
+当前新项目已经具备：
 
-- 旧 `5005` Autosweep 服务：已经跑通过 metasurface 4 点真实 sweep，包含 `.fsp` 生成、并行求解、S 参数提取和 MATLAB 后处理经验。
-- 新 `5004` API v1 服务：已经具备 `/jobs/*` 持久 job/task 状态机，并跑通过短 `real geometry-smoke` job。
+- API v1 session/model/geometry/debug 端点。
+- 持久 `/jobs/*`、审批、幂等和 resume 地基。
+- `geometry-smoke` 真实验证。
+- `metasurface-sweep` 的 mock、质量报告和 evidence index。
 
-本阶段目标不是重写旧 sweep 引擎，而是把旧 sweep/后处理能力接入新 `5004` 的持久 job/task 模型，并补齐质量报告与 evidence-first 回传。
+此前的 bridge 方案证明了 job/task 与证据链可用，但真实执行仍依赖旧 RPC，继承了陈旧会话、错误健康检查、启动脚本和目录耦合等问题。新路线将四阶段 sweep 直接实现到新项目中。
 
 ## 目标
 
-1. 新增 `job_type="metasurface-sweep"`，支持 `plan`、`mock` 和 `real`。
-2. 每个 sweep job 使用稳定的 `jobs/<job_id>/` 目录保存 manifest、status、summary、task、结果索引、质量报告和证据索引。
-3. `real` sweep 仍必须经过明确审批，不允许无审批启动真实求解。
-4. 首版质量报告区分“求解完成”和“物理质量结论”，结论只允许 `pass`、`warning`、`fail`。
-5. 默认回传轻量证据索引，不全量回传逐点 `.fsp`。
-6. 保持旧 `5005` 服务可并行运行；新实现优先在 `5004` 内承载迁移后的 job API。
+1. `5004` 直接通过当前 `SessionManager` 和 raw lumapi 执行 metasurface sweep。
+2. 每个参数点映射为一个持久 sample task，支持逐样本状态、证据和 resume。
+3. `real metasurface-sweep` 异步启动，立即返回 `202 + job_id`，不让 HTTP 请求等待求解。
+4. 原生执行四阶段：
+   - Phase 1：从只读模板生成逐点 `.fsp` 并加入 FDTD job queue。
+   - Phase 2：统一执行 `runjobs()`。
+   - Phase 3：逐点提取 `T` 和 `S21_Gn` 相位。
+   - Phase 4：用新项目自身的 Python 后处理生成 CSV/JSON 和关键 SVG，不依赖旧 MATLAB 脚本。
+5. 每个完成 job 生成 `summary.json`、`quality_report.json` 和 `evidence/index.json`。
+6. 真实 2×2、phases `[1,2,3,4]` 验证通过后，将默认服务端口从 `5004` 切换为 `5000`。
 
 ## 非目标
 
-- 不实现新的自然语言器件编译器。
-- 不实现优化循环、取消队列或多 job 并发调度。
-- 不自动扩大扫描范围、改变 mesh、boundary、scheduler 或物理设置。
-- 不把所有 `.fsp` 模型文件作为默认 HTTP 响应或默认下载内容。
-- 不删除旧 `5005` 接口；旧服务仍作为已验证 baseline 和回退路径。
+- 不继续修复旧 Autosweep RPC。
+- 不调用旧项目的 `/sweep/*`、`/results/*` 或任何端口。
+- 不实现优化算法、取消队列、多机调度或多个并行 real job。
+- 不自动扩大参数范围、修改 mesh/boundary 或改变模板物理设置。
+- 不默认回传所有逐点 `.fsp`。
 
-## 推荐路线
+## 模板迁移
 
-采用桥接式迁移：
+新项目使用：
 
-1. 先把 `JobStore` 从单一 `geometry-smoke` 扩展为支持 `metasurface-sweep`。
-2. 新增一个 sweep job 适配层，负责把 request 转成 job task、执行结果、summary、quality report 和 evidence index。
-3. mock 模式使用合成结果验证状态机和报告链，不调用 Lumerical。
-4. real 模式在 `5004` 进程内调用迁移后的 sweep executor；如果旧完整执行逻辑暂时不可离线测试，则用薄接口隔离，测试只覆盖接口契约和产物写入。
+```text
+templates/metasurface/base_model.fsp
+templates/metasurface/README.md
+```
 
-这条路线最小化风险：先让持久状态机接管运行记录与证据，再逐步把旧 sweep 的内部代码迁入或封装。
+约束：
+
+- `.fsp` 继续被 Git 忽略，不提交大二进制。
+- Windows 初次部署时，将已验证模板复制到新项目目录。
+- `manifest.json` 记录模板绝对路径、文件大小、修改时间和 SHA-256。
+- executor 只读模板；逐点模型写入 `jobs/<job_id>/models/`。
+- 模板必须包含：
+  - `FDTD`
+  - `::model`
+  - `::model::s_params`
+  - `::model` 的 `ratio`、`height`、`period` 属性。
 
 ## 请求模型
 
-`/jobs/plan` 和 `/jobs/start` 接收：
-
 ```json
 {
-  "mode": "mock",
+  "mode": "real",
   "job_type": "metasurface-sweep",
   "idempotency_key": "optional-key",
   "sweep": {
     "config": {
       "SWEEP_Y_AXIS": "period",
-      "RATIO_PTS": 2,
-      "PERIOD_PTS": 2,
+      "RATIO_LIST": [0.2, 0.8],
+      "PERIOD_LIST": [3.9e-7, 5.4e-7],
+      "BASE_HEIGHT": 7e-7,
+      "BASE_PERIOD": 4.7e-7,
       "FDTD_PROCESSES": 1,
       "FDTD_CAPACITY": 1
     },
-    "phases": [1, 2, 3],
+    "phases": [1, 2, 3, 4],
     "hide": true,
-    "template": "base_model.fsp",
+    "template": "templates/metasurface/base_model.fsp",
     "include_models": false
   },
   "approval": {
-    "approved": false,
-    "approved_for": null
+    "approved": true,
+    "approved_for": "real_run"
   }
 }
 ```
 
-字段约定：
+兼容简写：
 
-- `mode`: `plan | mock | real`。
-- `job_type`: `geometry-smoke | metasurface-sweep`。
-- `sweep.config`: 旧 Autosweep 配置子集；首版至少支持 `SWEEP_Y_AXIS`、`RATIO_PTS`、`PERIOD_PTS`、`FDTD_PROCESSES`、`FDTD_CAPACITY`。
-- `sweep.phases`: 默认 `[1, 2, 3]`；包含 `4` 时表示请求 MATLAB 后处理。
-- `sweep.hide`: 生产默认 `true`，GUI 调试可设 `false`。
-- `sweep.include_models`: 默认 `false`；只影响 evidence index 是否列出逐点 `.fsp` 调试资产，不改变默认 API 响应大小。
-- `approval`: `real` 模式必须为 `{"approved": true, "approved_for": "real_run"}`。
+- 如果只提供 `RATIO_PTS` 和 `PERIOD_PTS`，系统用安全默认边界生成列表。
+- `phases` 默认 `[1,2,3]`。
+- `hide` 默认 `true`。
+- `include_models` 默认 `false`。
 
-## Task 模型
+## Sample Task 模型
 
-首版把一个 metasurface sweep job 表示为一个高层 task：
+每个参数点对应一个 task：
 
 ```json
 {
   "task_id": "task_0001",
-  "operation": "metasurface-sweep",
+  "operation": "metasurface-sample",
+  "state": "pending",
+  "phase": "pending",
   "input": {
-    "config": {},
-    "phases": [1, 2, 3],
-    "hide": true,
-    "template": "base_model.fsp",
-    "include_models": false
+    "ratio": 0.2,
+    "height": 7e-7,
+    "period": 3.9e-7,
+    "sample_index": 0
+  },
+  "outputs": {
+    "model_file": "...",
+    "result_file": "...",
+    "transmission": 0.0,
+    "phase_rad": 0.0
   }
 }
 ```
 
-原因：旧 sweep 引擎内部已经管理逐点样本、求解和提取。现在先把“整个 sweep 流水线”作为可恢复的高层 task 记录，避免在首版里重写 sample-level 调度。
+task 状态仍使用 `pending | running | succeeded | failed | skipped`。新增 `phase` 字段记录 `generating | queued | solving | extracting | complete`，不扩大顶层状态枚举。
 
-后续如果要支持逐 sample resume，再把旧内部 sample 映射成多个 `tasks/task_XXXX.json`。
+## 执行架构
 
-## 输出文件
+新增 `NativeSweepRunner`，由一个 real sweep 后台线程调用。
 
-每个 sweep job 至少生成：
+### 启动
 
-```text
-jobs/<job_id>/
-├── manifest.json
-├── status.json
-├── summary.json
-├── quality_report.json
-├── run.log
-├── inputs/
-│   └── request.json
-├── tasks/
-│   └── task_0001.json
-├── results/
-│   ├── sweep_summary.json
-│   └── ...
-└── evidence/
-    └── index.json
-```
+1. `/jobs/start` 校验审批、模板和参数预算。
+2. `JobStore` 先创建 job 与全部 sample task。
+3. Server 返回 HTTP 202，包含 `job_id`、task 数和审批摘要。
+4. 后台线程获取单机 sweep 锁并执行。
+5. 同一时间只允许一个 real metasurface sweep；有活动 sweep 时拒绝新 real sweep，不创建重复求解。
 
-`summary.json` 需要包含：
+### Phase 1
 
-- `task_counts`
-- `results`
-- `quality_report`
-- `evidence`
+1. 若没有可用 FDTD 会话，启动 `hide=true` 会话。
+2. 调用 `clearjobs()` 和 `redrawoff()`。
+3. 设置 processes/capacity；不支持时记录 warning。
+4. 对选中的 pending/failed task：
+   - `load(template)`
+   - `switchtolayout()`
+   - 每次 load 后设置 `express mode=1`
+   - 设置 `ratio/height/period`
+   - 保存到 `jobs/<job_id>/models/<task_id>.fsp`
+   - `addjob(model_path)`
+   - task phase 更新为 `queued`
 
-`quality_report.json` 需要包含：
+### Phase 2
 
-- `job_id`
-- `generated_at`
-- `solver_status`
-- `result_completeness`
-- `physical_checks`
-- `conclusion`
-- `requires_human_review`
+1. 对本轮加入队列的模型统一 `runjobs()`。
+2. task phase 更新为 `solving`。
+3. HTTP/MCP 不同步等待。
 
-`evidence/index.json` 需要包含：
+### Phase 3
 
-- `job_id`
-- `generated_at`
-- `summary_files`
-- `result_files`
-- `figure_files`
-- `model_files`
-- `download_policy`
+对本轮 task：
 
-默认 `download_policy.include_models` 为 `false`。
+1. 加载逐点模型。
+2. 执行 `runanalysis("::model::s_params")`。
+3. 读取 `T` 和 `S21_Gn`。
+4. 写 `results/<task_id>.json`。
+5. 成功 task 标记 `succeeded/complete`；单点失败标记 `failed`，不丢失其他点。
 
-## 质量门
+### Phase 4
 
-首版质量门保持保守：
+新项目用 Python 生成：
 
-- `fail`：task 失败、无结果摘要、`valid_count == 0`、或存在明确错误。
-- `warning`：有缺失样本、未运行后处理、缺少可视化、或物理检查不足。
-- `pass`：solver 成功、结果完整、没有缺失样本、基础物理检查未触发失败。
+- `results/sweep_results.csv`
+- `results/sweep_summary.json`
+- `evidence/transmission_heatmap.svg`
+- `evidence/phase_heatmap.svg`
 
-无论结论如何，`requires_human_review` 都为 `true`。Agent 只产出证据与建议，不宣称物理最终正确。
+SVG 使用标准库直接生成，避免给 Windows Lumerical Python 增加 matplotlib 依赖。
 
-## Evidence-first 回传
+## JobStore 扩展
 
-`GET /jobs/<job_id>` 默认返回轻量信息：
+新增受控公共方法，避免 runner 直接散乱修改 JSON：
 
-- manifest
-- status
-- summary
-- quality report 摘要或路径
-- evidence index 摘要或路径
+- `enqueue(request) -> job`
+- `execute(job_id, runner)`
+- `update_task(job_id, task_id, ...)`
+- `append_log(job_id, message)`
+- `recover_interrupted_jobs()`
 
-不把逐点 `.fsp`、大 `.mat` 或大图片直接塞进 JSON 响应。下载大文件仍走显式结果下载或后续专门的 evidence 下载端点。
+`recover_interrupted_jobs()` 在 Server 启动时：
 
-## RPC 路由影响
+- 将残留 `running` job 改为 `partial`。
+- 将残留 `running` task 改为 `failed`。
+- error type 为 `interrupted`。
+- 不自动重新求解，等待显式 `/resume`。
 
-首版继续使用已有路由：
+## Resume
 
-- `POST /jobs/plan`
-- `POST /jobs/start`
-- `GET /jobs/<job_id>`
-- `GET /jobs/<job_id>/tasks`
-- `POST /jobs/<job_id>/resume`
+`POST /jobs/<job_id>/resume`：
 
-不新增外部路由，避免 API 面膨胀。`RpcClient.jobs_*` 方法继续可用。
+- 只选择 `pending/failed` sample task。
+- 使用原 manifest、模板指纹和物理参数。
+- 不覆盖已成功 task 的结果。
+- 重新生成并求解选中样本。
+- 模板指纹变化时拒绝 resume，要求创建新 job。
+
+## 质量报告
+
+`quality_report.json` 包含：
+
+- solver/job 完成状态。
+- requested/succeeded/failed/missing 数量。
+- transmission 数值有限性。
+- 无源器件基础范围检查：明显超出 `[0,1]` 标记 warning/fail。
+- 参数网格完整性。
+- 异常跳变标记。
+- `conclusion: pass | warning | fail`
+- `requires_human_review: true`
+
+solver 完成不等于物理通过。
+
+## Evidence-first
+
+默认 API 返回：
+
+- manifest/status/summary
+- task 摘要
+- 每点标量结果
+- quality report
+- 两张 SVG
+- evidence index
+
+默认不返回逐点 `.fsp` 内容。`include_models=true` 只让 evidence index 列出模型路径。
+
+## 并发和会话安全
+
+- 所有 real sweep 使用进程内单一 sweep 锁。
+- sweep 运行时拒绝通用 session/model/geometry 的破坏性操作，避免共享会话被修改。
+- FDTD cleanup 可超时；job 事实状态以磁盘为准。
+- mock 不获取 FDTD 锁。
 
 ## 错误处理
 
-- 不支持的 `job_type` 返回 HTTP 400 `validation_error`。
-- `real` 缺少审批返回 HTTP 403 `approval_required`。
-- 幂等键冲突返回 HTTP 409 `idempotency_conflict`。
-- sweep executor 失败不抛出为 HTTP 500；它应落到 task `failed`、job `failed/partial`，并写入 `quality_report.json`。
-- HTTP 超时仍表示远端状态未知，用户应通过 `GET /jobs/<job_id>` 读取磁盘状态。
+- 模板缺失或结构不合格：启动前 HTTP 400，不消耗真实求解。
+- real 未审批：HTTP 403。
+- 已有 real sweep：HTTP 409。
+- 单点失败：task failed，job partial。
+- 全部失败：job failed。
+- 服务退出：启动恢复为 interrupted，允许显式 resume。
+- Phase 4 失败但标量结果完整：job partial 或 quality warning，保留 Phase 3 结果。
+
+## 端口迁移
+
+阶段 A：
+
+- 开发和离线测试：`5004`。
+- Windows 真实 2×2：`5004`。
+
+阶段 B，仅在 2×2 的 phases `[1,2,3,4]`、质量报告和 evidence 全部验证后：
+
+- `scripts/windows/manage_rpc.ps1` 默认端口改为 `5000`。
+- `rpc_server.py` CLI 默认端口改为 `5000`。
+- 文档和 smoke 默认地址改为 `5000`。
+- 最后在 `5000` 跑 health 与 mock smoke；不未经新审批重复真实 sweep。
 
 ## 测试策略
 
-离线测试优先：
+离线：
 
-1. `JobStore` 能 plan/start `metasurface-sweep`。
-2. mock sweep 生成 `summary.json`、`quality_report.json`、`evidence/index.json`。
-3. mock sweep 的 quality report 在完整结果时为 `pass`，缺失结果时为 `warning/fail`。
-4. real sweep 缺少审批被拒绝。
-5. Flask `/jobs/*` 对 `metasurface-sweep` 返回稳定 v1 envelope。
-6. `RpcClient` 不需要新增方法，但现有 `jobs_*` 能透传新 job type。
+1. 参数网格展开为稳定 sample task。
+2. async start 返回 202，不同步执行 solver。
+3. fake lumapi 验证 Phase 1 顺序：`clearjobs → load → express mode → set parameters → save → addjob`。
+4. fake lumapi 验证 batch `runjobs()` 只调用一次。
+5. Phase 3 独立记录成功与失败样本。
+6. resume 只选择 pending/failed。
+7. interrupted recovery。
+8. quality report 和 SVG/evidence。
+9. sweep 锁和破坏性端点保护。
 
-真实验证：
+Windows：
 
-1. Windows clone `git pull --ff-only`。
-2. 用户本地双击 `scripts\windows\restart_rpc.bat`。
-3. Mac 通过 HTTP/SSH 触发短 `real metasurface-sweep`，建议先跑 2x2、phases `[1,2,3]`。
-4. 核验 job state、task state、`summary.json`、`quality_report.json`、`evidence/index.json` 和旧 sweep 结果文件。
+1. 复制并指纹记录模板。
+2. `5004` mock 2×2。
+3. 明确审批后 `5004` real 2×2，phases `[1,2,3,4]`。
+4. 核验 4 个 sample task、4 个模型、4 个标量结果、CSV、两张 SVG、quality report 和 evidence index。
+5. 通过后切默认端口到 `5000`。
+6. `5000` health 与 mock smoke。
 
-## 后续扩展
+## 验收标准
 
-- 把旧 sweep 内部每个样本映射为独立 task，实现 sample-level resume。
-- 增加 `/jobs/<id>/evidence` 或 `/evidence/<path>` 专用下载端点。
-- 将质量报告中的物理检查从基础完整性扩展到 S 参数守恒、异常跳变和曲线可视化。
-- MCP 工具层新增 `fdtd_job_plan/start/status/tasks/resume`，让 Claude Code/Hermes 直接操作新 job API。
+- 新项目运行时不访问旧 Autosweep 端口或目录。
+- real start 在 2 秒内返回 `202 + job_id`。
+- 2×2 真实 sweep 为 4 个独立 sample task。
+- 服务重启后状态仍可读，interrupted task 可显式 resume。
+- 质量报告与 evidence-first 产物齐全。
+- 最终新服务默认端口为 `5000`。
