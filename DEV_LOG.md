@@ -325,3 +325,18 @@
   - Windows 待加载端口修正后验证短 `real metasurface-sweep` smoke。
 - 后续：
   - 把旧 sweep 内部 sample 映射为逐 task，实现 sample-level resume。
+
+## 2026-06-18 - 原生 metasurface sweep Phase 1-3 离线实现
+
+- 目标：停止依赖旧 Autosweep RPC，先在新项目内实现逐 sample 原生生成、求解和结果提取。
+- 修改：
+  - `src/sweep_job.py` 将 sweep 展开为稳定的 `metasurface-sample` task 网格。
+  - `src/job_store.py` 增加 `enqueue`、task 更新、运行日志和 interrupted recovery 地基。
+  - 新增 `src/native_sweep.py`：Phase 1 生成逐点 `.fsp`，Phase 2 调用一次 `runjobs()`，Phase 3 逐点读取 `T` 与 `S21_Gn` 并写 `results/task_*.json`。
+  - Phase 3 支持单样本失败隔离，优先读取 task 已记录的 `outputs.model_file`，缺失 `S`/提取异常只失败对应样本。
+- 验证：
+  - `.venv/bin/python -m pytest tests/test_native_sweep.py -q`：`7 passed`。
+  - `.venv/bin/python -m pytest tests/test_job_store.py tests/test_sweep_job.py -q`：`15 passed`。
+  - `.venv/bin/python -m compileall -q src/native_sweep.py tests/test_native_sweep.py`：通过。
+- 后续：
+  - 进入 Phase 4：CSV、质量报告和 SVG evidence；随后接 Flask 异步协调器。
