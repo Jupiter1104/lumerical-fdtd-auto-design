@@ -240,3 +240,44 @@ def test_render_real_result_review_markdown_contains_key_metrics(tmp_path):
     assert "Software-chain verdict: pass" in markdown
     assert "Phase span: 1.3272514058176679 rad" in markdown
     assert "not a final phase library" in markdown
+
+
+def test_collect_real_result_review_cli_writes_json_and_markdown(tmp_path):
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parent.parent
+    job_dir, preflight_path = write_c1_fixture(tmp_path)
+    output_dir = tmp_path / "review"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(
+                root
+                / "scripts"
+                / "collect_real_result_review.py"
+            ),
+            "--job-dir",
+            str(job_dir),
+            "--preflight",
+            str(preflight_path),
+            "--output-dir",
+            str(output_dir),
+        ],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    review = json.loads(
+        (output_dir / "review.json").read_text(encoding="utf-8")
+    )
+    markdown = (output_dir / "real_2x2_review.md").read_text(
+        encoding="utf-8"
+    )
+    assert review["software_chain_verdict"] == "pass"
+    assert "status=pass" in result.stdout
+    assert "Software-chain verdict: pass" in markdown
