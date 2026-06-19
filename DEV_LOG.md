@@ -717,3 +717,12 @@
 - 默认路线：25-task `ratio × height` 粗扫，ratio `[0.2, 0.35, 0.5, 0.65, 0.8]`，height `[500, 550, 600, 650, 700] nm`，fixed period `470 nm`，CPU，`EXPRESS_MODE=0`，`include_models=false`。
 - 安全边界：Stage C0 的 2×2 preflight 继续锁死为 4 tasks；C3 必须新增独立 production packet builder。高度不超过 `700 nm`，避免越过当前模板/mesh 已验证边界。
 - 后续：交给 Claude Code 执行 C3 plan；生成 `runtime/approvals/production_sweep_c3_packet.json` 后停在人工审批，Stage C4 才能在明确批准 exact packet 后启动真实 sweep。
+
+## 2026-06-19 - Stage C3 production sweep design packet
+
+- 目标：基于 C2 真实结果审计，生成下一轮有界真实 sweep 的审批包，而不是直接启动求解。
+- 设计：默认 25 tasks，sweep.axis=height，ratio [0.2, 0.35, 0.5, 0.65, 0.8]，height [500, 550, 600, 650, 700] nm，fixed period 470 nm，CPU，EXPRESS_MODE=0，include_models=false。
+- 安全边界：高度不超过 700 nm，保持在 Stage B0.1 已探测的 mesh envelope 内；高于 700 nm 的 taller-pillar 扫描需要单独模板/mesh 审核。
+- 约束：C3 不启动 FDTD、不创建 job、不 resume、不重启 RPC、不修改模板或 .fsp。
+- 后续：人工审批 exact C3 packet 后，Stage C4 才能启动真实 production-discovery sweep。
+

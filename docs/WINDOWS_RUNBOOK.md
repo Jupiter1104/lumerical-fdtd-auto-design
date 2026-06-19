@@ -191,3 +191,21 @@ git rev-parse --short HEAD
 ### `/session/stop` 或 `/session/close` 超时
 
 确认已同步到包含 close detach/timeout 修复的提交。修复版会先把 RPC 状态标记为断开，再后台请求 raw lumapi 关闭；如果 `fdtd.close()` 不返回，响应仍会包含 `close_state=timed_out`，服务不会被永久占住。
+
+## Stage C3 production sweep packet
+
+On Windows, after pulling the latest code and ensuring `base_model.contract.json` and the C2 review artifact exist:
+
+```cmd
+cd /d F:\lumerical-fdtd-auto-designdtd-auto-design
+scripts\windowsuild_production_sweep_packet.bat
+```
+
+Expected output contains:
+
+```text
+production_sweep_c3 status=ready_for_human_approval task_count=25
+```
+
+This command is local-only. It must not start FDTD, call `/jobs/start`, resume a job, or modify `.fsp` files.
+

@@ -227,3 +227,20 @@ Stage A inventory
 5. 不提交 runtime probe JSON。
 6. 停在 Stage B0 checkpoint，不进入 Stage B1。
 7. 不在此阶段创建 strict profile、contract 或启动真实 sweep。
+
+## SOP-014 - Stage C3 production sweep design packet
+
+1. 确认 C2 `review.json` 存在，且 `software_chain_verdict=pass`。
+2. 确认 Stage B1 `templates/metasurface/base_model.contract.json` 仍为 `verified`。
+3. 运行：
+   ```bash
+   .venv/bin/python scripts/build_production_sweep_packet.py \
+     --review runtime/reviews/job_20260619_213418_metasurface_sweep/review.json \
+     --contract templates/metasurface/base_model.contract.json \
+     --output runtime/approvals/production_sweep_c3_packet.json
+   ```
+4. 审核 packet：`status=ready_for_human_approval`、`task_count=25`、CPU、`express_mode=0`、`include_models=false`、template SHA 和 contract fingerprint 匹配。
+5. C3 只生成 packet，不调用 `/jobs/start`，不 resume，不重启 RPC，不修改 `.fsp`。
+6. 如果用户批准该 exact packet，后续进入 Stage C4 才允许提交 `compiled_request` 启动真实 sweep。
+7. 若需要高度超过 700 nm 或改变 mesh/boundary/source/template，必须另起模板/mesh review，不得复用 C3 默认 packet。
+
