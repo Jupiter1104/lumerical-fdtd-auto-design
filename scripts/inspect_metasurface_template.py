@@ -132,6 +132,133 @@ class ReadOnlyFdtdAdapter:
         self._fdtd.close()
 
 
+def _jsonable(value):
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if hasattr(value, "tolist"):
+        return _jsonable(value.tolist())
+    return value
+
+
+def build_inventory(
+    adapter: ReadOnlyFdtdAdapter,
+    *,
+    template: Path,
+    profile: dict,
+    logical_path: str,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+) -> dict:
+    stat = template.stat()
+    errors = []
+    known_checks = []
+
+    version = adapter.get_version()
+    for role in ("fdtd", "model", "analysis_group"):
+        path = profile["known_objects"][role]
+        try:
+            count = adapter.get_named_count(path)
+        except Exception as exc:
+            count = None
+            errors.append(
+                {
+                    "type": "property_unreadable",
+                    "path": path,
+                    "message": str(exc),
+                }
+            )
+        status = "pass" if count == 1 else "fail"
+        known_checks.append(
+            {
+                "role": role,
+                "path": path,
+                "count": count,
+                "status": status,
+            }
+        )
+        if count == 0:
+            errors.append(
+                {
+                    "type": "object_missing",
+                    "path": path,
+                    "message": f"Required object is missing: {path}",
+                }
+            )
+        elif count not in {None, 1}:
+            errors.append(
+                {
+                    "type": "object_not_unique",
+                    "path": path,
+                    "message": f"Required object is not unique: {path}",
+                }
+            )
+
+    for role in ("fdtd", "model", "analysis_group"):
+        path = profile["known_objects"][role]
+        if next(
+            item for item in known_checks if item["role"] == role
+        )["count"] != 1:
+            continue
+        try:
+            adapter.get_named(path, "type")
+        except Exception as exc:
+            errors.append(
+                {
+                    "type": "property_unreadable",
+                    "path": path,
+                    "property": "type",
+                    "message": str(exc),
+                }
+            )
+
+    try:
+        objects = _jsonable(adapter.inventory_objects())
+    except Exception as exc:
+        objects = []
+        errors.append(
+            {
+                "type": "inventory_failed",
+                "message": str(exc),
+            }
+        )
+
+    inventory = {
+        "inventory_version": INVENTORY_VERSION,
+        "inventory_only": True,
+        "status": "inventory_with_errors" if errors else "inventory",
+        "inventory_fingerprint": "",
+        "template": {
+            "logical_path": logical_path,
+            "absolute_path": str(template.resolve()),
+            "sha256": file_sha256(template),
+            "size_bytes": stat.st_size,
+            "modified_at": datetime.fromtimestamp(
+                stat.st_mtime,
+                tz=timezone.utc,
+            ).isoformat(),
+        },
+        "profile": profile,
+        "inspector": {
+            "checked_at": utc_now(),
+            "hostname": hostname,
+            "python_executable": python_executable,
+            "lumerical_version": version,
+            "code_commit": code_commit,
+            "hide": True,
+            "cleanup_state": "pending",
+        },
+        "known_object_checks": known_checks,
+        "roles_to_discover": list(profile["roles_to_discover"]),
+        "objects": objects,
+        "errors": errors,
+    }
+    inventory["inventory_fingerprint"] = inventory_fingerprint(inventory)
+    return inventory
+
+
 def import_lumapi():
     candidate = (
         Path(sys.executable).resolve().parent.parent / "api" / "python"

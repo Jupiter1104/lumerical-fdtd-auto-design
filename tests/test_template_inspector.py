@@ -140,3 +140,123 @@ def test_inventory_script_text_contains_no_forbidden_commands():
         "delete",
     ):
         assert forbidden not in text
+
+
+import hashlib
+import json
+
+
+def inventory_profile():
+    return {
+        "profile_version": "0.1",
+        "mode": "inventory",
+        "template_logical_path": "templates/metasurface/base_model.fsp",
+        "known_objects": {
+            "fdtd": "FDTD",
+            "model": "::model",
+            "analysis_group": "::model::s_params",
+        },
+        "roles_to_discover": [
+            "pillar",
+            "substrate",
+            "source",
+            "monitors",
+        ],
+    }
+
+
+def test_build_inventory_records_template_environment_and_objects(tmp_path):
+    module = load_inspector_module()
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    fdtd = FakeFdtd()
+
+    inventory = module.build_inventory(
+        module.ReadOnlyFdtdAdapter(fdtd),
+        template=template,
+        profile=inventory_profile(),
+        logical_path="templates/metasurface/base_model.fsp",
+        hostname="win-test",
+        python_executable="F:/Lumerical/python.exe",
+        code_commit="abc123",
+    )
+
+    assert inventory["inventory_version"] == "0.1"
+    assert inventory["inventory_only"] is True
+    assert inventory["status"] == "inventory"
+    assert inventory["template"]["sha256"] == hashlib.sha256(
+        b"template"
+    ).hexdigest()
+    assert inventory["inspector"]["hostname"] == "win-test"
+    assert inventory["inspector"]["lumerical_version"] == "v242"
+    assert inventory["known_object_checks"] == [
+        {
+            "role": "fdtd",
+            "path": "FDTD",
+            "count": 1,
+            "status": "pass",
+        },
+        {
+            "role": "model",
+            "path": "::model",
+            "count": 1,
+            "status": "pass",
+        },
+        {
+            "role": "analysis_group",
+            "path": "::model::s_params",
+            "count": 1,
+            "status": "pass",
+        },
+    ]
+    assert any(
+        item["path"] == "::model::pillar"
+        for item in inventory["objects"]
+    )
+    assert inventory["errors"] == []
+    assert inventory["inventory_fingerprint"]
+
+
+def test_build_inventory_records_missing_known_object(tmp_path):
+    module = load_inspector_module()
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    fdtd = FakeFdtd()
+    fdtd.counts["::model::s_params"] = 0
+
+    inventory = module.build_inventory(
+        module.ReadOnlyFdtdAdapter(fdtd),
+        template=template,
+        profile=inventory_profile(),
+        logical_path="templates/metasurface/base_model.fsp",
+        hostname="win-test",
+        python_executable="python.exe",
+        code_commit="abc123",
+    )
+
+    assert inventory["status"] == "inventory_with_errors"
+    assert inventory["errors"][0]["type"] == "object_missing"
+
+
+def test_build_inventory_records_property_read_errors(tmp_path):
+    module = load_inspector_module()
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    fdtd = FakeFdtd()
+    del fdtd.properties[("FDTD", "type")]
+
+    inventory = module.build_inventory(
+        module.ReadOnlyFdtdAdapter(fdtd),
+        template=template,
+        profile=inventory_profile(),
+        logical_path="templates/metasurface/base_model.fsp",
+        hostname="win-test",
+        python_executable="python.exe",
+        code_commit="abc123",
+    )
+
+    assert inventory["status"] == "inventory_with_errors"
+    assert any(
+        error["type"] == "property_unreadable"
+        for error in inventory["errors"]
+    )
