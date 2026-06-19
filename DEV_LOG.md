@@ -625,3 +625,23 @@
 - 修正：select/selected get API; prepare_lumapi_environment; 三态对象分类; _read_fixed_object_property; canonical ::model::FDTD; 分离 global/override mesh; source_markers 证据; evaluate_stage_b1_readiness。
 - 离线验证：244 passed, compileall PASS, 禁止操作扫描 PASS。
 - Windows probe: 待执行。stage_b1_ready 不是 real approval。
+
+
+## 2026-06-19 - Stage B0.1 Windows re-probe results
+
+- Windows HEAD: 1087980, LAPTOP-OR14JLNC.
+- status=probe, errors=[], cleanup_state=closed.
+- stage_b1_ready=true, stage_b1_blockers=[].
+- probe fingerprint: a8e7e2ee4265f607012c54b85e29a01f55ede9220cb37b12033be6f471c017d6.
+- Template SHA matches Stage A.
+- FDTD: canonical ::model::FDTD, 16 props readable, cpu_confirmed=true (express_mode=0).
+- dimension=3D, mesh_accuracy=6.0, sim_time=5e-11.
+- Boundaries: x=Anti-Symmetric, y=Symmetric, z=PML.
+- Pillar: ::model::pillar, Si3N4, radius=1.88e-7.
+- Substrate: ::model::substrate, SiO2.
+- Source: explicit_object, ::model::s_params::source.
+- Model params: ratio=0.8, height=7e-7, period=4.7e-7.
+- Duplicate objects: all unresolved_scope_alias.
+- No solve, no modify, no job created.
+- Stage B0.1 complete; Stage B1 ready. Stopped, not entering Stage B1.
+
