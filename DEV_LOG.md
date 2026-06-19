@@ -600,3 +600,21 @@
   - 禁止操作扫描：`scripts/probe_metasurface_template.py` 无匹配。
   - Git tracked-artifact 扫描：`base_model.probe.json` 不在跟踪中。
 - Windows probe：尚未执行；等待推送和 Windows 同步。
+- Windows probe（`c93d4b7`，LAPTOP-OR14JLNC）：
+  - 状态：`status=probe`，`probe_only=true`，`errors=[]`，`cleanup_state=closed`。
+  - 模板 SHA-256 与 Stage A 一致：`03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176`。
+  - probe fingerprint：`590aa2fe80aea642a4bcc61d12b80b32c23ddd7833593e1545287d39215af6fd`。
+  - 安装身份：`confirmable=true`，`path_version_tag=v242`，`version_warning=true`（预期行为）。
+  - **关键发现——root 对象不可通过 getnamed 访问**：
+    - `::FDTD`、`::pillar`、`::substrate` 等 root scope 对象在 `getnamednumber` 中可计数，但 `getnamed("::XXX", ...)` 返回 "no items matching"。
+    - 只有 `::model::` scope 下的对象可通过 `getnamed` 读取属性。
+    - 结论：root 和 ::model 下同名对象是 **independent_objects**；实际运行属性在 `::model::` scope。
+  - **Pillar**：`::model::pillar`，Circle，material=`Si3N4 (Silicon Nitride) - Kischkat`（非猜测的 TiO2），radius=`1.88e-7`，z=`3.5e-7`，z span=`7e-7`。x span/y span 对 Circle 不适用。
+  - **Substrate**：`::model::substrate`，Rectangle，material=`SiO2 (Glass) - Palik`，z=`-5.57e-7`，z span=`1.11e-6`，x/y span=`9.4e-7`。
+  - **Source**：`explicit_object`，路径 `::model::s_params::source`，类型 `PlaneSource`。setup script SHA-256 `fd0b51f5...`（6188 bytes），analysis script SHA-256 `07470696...`（15478 bytes）。
+  - **Monitors**：6 个，含 `::model::field`（2D Y-normal DFTMonitor）、`::model::s_params::T`（2D Z-normal DFTMonitor）、`::model::s_params::R`（2D Z-normal DFTMonitor）、index monitors。
+  - **Analysis group**：`::model::s_params` 类型 Analysis Group，脚本中检测到 `T` 和 `S21_Gn` 结果命名。
+  - **Model 参数**：ratio=`0.8`（float）、height=`7e-7`（float）、period=`4.7e-7`（float），均通过 `getnamed` 可读。
+  - **FDTD 配置**：root `FDTD` 不可通过 `getnamed` 直接访问；需使用 `::model::FDTD`。`express_mode` 不可读（`::model::FDTD` 无此属性）。
+  - **Mesh**：`::model::mesh` 存在但 `mesh accuracy` 属性不可读。
+  - 未运行求解、未修改模板、未保存 `.fsp`、未创建 real job。
