@@ -1,16 +1,16 @@
 """
 fdtd-mcp-server — FastMCP entry point.
 
-Mac 端 MCP Server，暴露 FDTD 扫参流水线为结构化 MCP 工具供 Claude/Hermes 调用。
+Mac 端 MCP Server，暴露 FDTD 持久 job 状态机为结构化 MCP 工具供 Claude/Hermes 调用。
 所有操作通过 RPC Client 转发到 Windows RPC Server 执行。
 
-Windows 端: metasurface autosweep pipeline
+Windows 端: RPC API v1，默认端口 5000
   - Lumerical FDTD v242 (hide=True, batch mode)
-  - MATLAB Engine (phase post-processing, heatmaps)
-  - 4-phase pipeline: .fsp generation → parallel solve → S-param extract → MATLAB plots
+  - 原生 4-phase metasurface sweep 引擎
+  - 持久 job/task 状态机、quality report、SVG evidence
 
 启动:
-    FDTD_RPC_URL=http://localhost:5001 python -m src.server
+    FDTD_RPC_URL=http://localhost:5000 python -m src.server
 
 配置 (Claude Code .mcp.json):
     {
@@ -20,7 +20,7 @@ Windows 端: metasurface autosweep pipeline
           "args": ["-m", "src.server"],
           "cwd": "/path/to/project",
           "env": {
-            "FDTD_RPC_URL": "http://localhost:5001"
+            "FDTD_RPC_URL": "http://localhost:5000"
           }
         }
       }
@@ -39,12 +39,13 @@ from .tools.geometry import register_geometry_tools
 from .tools.model import register_model_tools
 from .tools.session import register_session_tools
 from .tools.simulation import register_simulation_tools
+from .tools.jobs import register_job_tools
 from .knowledge.embedded import register_knowledge_tools
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fdtd-mcp")
 
-RPC_URL = os.environ.get("FDTD_RPC_URL", "http://localhost:5001")
+RPC_URL = os.environ.get("FDTD_RPC_URL", "http://localhost:5000")
 
 mcp = FastMCP("FDTD MCP")
 rpc = RpcClient(RPC_URL)
@@ -56,6 +57,7 @@ def register_all_tools() -> None:
     register_model_tools(mcp, rpc)
     register_geometry_tools(mcp, rpc)
     register_simulation_tools(mcp, rpc)
+    register_job_tools(mcp, rpc)
     register_analysis_tools(mcp, rpc)
     register_export_tools(mcp, rpc)
     register_knowledge_tools(mcp)
