@@ -1,0 +1,56 @@
+{
+  "canonical_paths": {
+    "analysis_group": "::model::s_params",
+    "fdtd": "::model::FDTD",
+    "field_monitor": "::model::field",
+    "mesh": "::model::mesh",
+    "model": "::model",
+    "pillar": "::model::pillar",
+    "reflection_index_monitor": "::model::s_params::R_index",
+    "reflection_monitor": "::model::s_params::R",
+    "source": "::model::s_params::source",
+    "substrate": "::model::substrate",
+    "transmission_index_monitor": "::model::s_params::T_index",
+    "transmission_monitor": "::model::s_params::T"
+  },
+  "fdtd": {
+    "boundary_conditions": {
+      "x_max_bc": "Anti-Symmetric",
+      "x_min_bc": "Anti-Symmetric",
+      "y_max_bc": "Symmetric",
+      "y_min_bc": "Symmetric",
+      "z_max_bc": "PML",
+      "z_min_bc": "PML"
+    },
+    "dimension": "3D",
+    "express_mode": 0,
+    "mesh_accuracy": 6,
+    "resource_type": "CPU",
+    "simulation_time": 5e-11
+  },
+  "materials": {
+    "pillar": "Si3N4 (Silicon Nitride) - Kischkat",
+    "substrate": "SiO2 (Glass) - Palik"
+  },
+  "mode": "contract",
+  "model_parameters": {
+    "height": 7e-7,
+    "period": 4.7e-7,
+    "ratio": 0.8
+  },
+  "profile_version": "0.1",
+  "results": {
+    "s_parameter": "S21_Gn",
+    "transmission": "T"
+  },
+  "template": {
+    "logical_path": "templates/metasurface/base_model.fsp",
+    "sha256": "03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176"
+  },
+  "warnings": [
+    {
+      "message": "B0.1 evidence shows x boundaries are Anti-Symmetric and y boundaries are Symmetric. Stage B1 preserves template evidence and does not change physics settings.",
+      "type": "physics_review_required"
+    }
+  ]
+}

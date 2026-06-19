@@ -228,3 +228,16 @@ def test_inspection_profile_rejects_invalid_strict_profile(mutation, match):
     mutation(profile)
     with pytest.raises(ValueError, match=match):
         validate_inspection_profile(profile)
+
+
+def test_repository_inspection_profile_matches_schema():
+    from src.template_contract import validate_inspection_profile
+
+    profile_path = (
+        ROOT
+        / "templates"
+        / "metasurface"
+        / "template-inspection-profile.json"
+    )
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert validate_inspection_profile(profile) == profile
