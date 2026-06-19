@@ -632,6 +632,23 @@ def test_identically_named_objects_with_different_properties_concluded_independe
     assert pillar_ev[0]["conclusion"] == "independent_objects"
 
 
+def test_identically_named_objects_with_unreadable_side_are_unresolved():
+    module = load_probe_module()
+
+    class RootUnreadableFdtd(FakeProbeFdtd):
+        def getnamed(self, path, prop):
+            if path.startswith("::") and not path.startswith("::model::"):
+                raise RuntimeError("root canonical path unavailable")
+            return super().getnamed(path, prop)
+
+    evidence = module.ProbeAdapter(
+        RootUnreadableFdtd()
+    ).probe_identically_named_objects()
+    pillar = next(item for item in evidence if item["name"] == "pillar")
+    assert pillar["conclusion"] == "unresolved_scope_alias"
+    assert pillar["unreadable_paths"] == ["::pillar"]
+
+
 # ============================================================
 # Structure & material candidate tests (Task B0-5)
 # ============================================================

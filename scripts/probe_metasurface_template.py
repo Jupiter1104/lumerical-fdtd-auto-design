@@ -179,29 +179,43 @@ class ProbeAdapter:
                 "paths": [e["path"] for e in entries],
                 "property_comparison": {},
             }
-            all_match = True
+            unreadable_paths = set()
+            different_readable_value = False
             for prop in stable_properties:
                 values = {}
+                readable_values = {}
                 for entry in entries:
                     try:
-                        values[entry["path"]] = _jsonable(
+                        value = _jsonable(
                             self._fdtd.getnamed(entry["path"], prop)
                         )
+                        values[entry["path"]] = {
+                            "status": "readable",
+                            "value": value,
+                        }
+                        readable_values[entry["path"]] = value
                     except Exception as exc:
-                        values[entry["path"]] = {"error": str(exc)}
-                        all_match = False
+                        unreadable_paths.add(entry["path"])
+                        values[entry["path"]] = {
+                            "status": "unreadable",
+                            "error": str(exc),
+                        }
                 comparison["property_comparison"][prop] = values
-                unique = set(
-                    json.dumps(v, sort_keys=True, default=str)
-                    for v in values.values()
-                )
-                if len(unique) > 1:
-                    all_match = False
-            comparison["conclusion"] = (
-                "possible_alias_or_identical"
-                if all_match
-                else "independent_objects"
-            )
+                if len(readable_values) == len(entries):
+                    from src.template_probe import stable_json as _sj
+                    encoded = {
+                        _sj({"value": v})
+                        for v in readable_values.values()
+                    }
+                    if len(encoded) > 1:
+                        different_readable_value = True
+            comparison["unreadable_paths"] = sorted(unreadable_paths)
+            if unreadable_paths:
+                comparison["conclusion"] = "unresolved_scope_alias"
+            elif different_readable_value:
+                comparison["conclusion"] = "independent_objects"
+            else:
+                comparison["conclusion"] = "possible_alias_or_identical"
             evidence.append(comparison)
         return evidence
 
