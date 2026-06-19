@@ -1,6 +1,7 @@
 """Targeted read-only probe for the controlled metasurface template (Stage B0)."""
 
 import argparse
+import hashlib
 import importlib
 import json
 import os
@@ -349,6 +350,211 @@ class ProbeAdapter:
                     "path": model_path,
                 }
         return params
+
+    # --- Source strategy ---
+
+    def _read_script_text_safely(self, path: str, script_property: str) -> dict:
+        """Read script text from analysis group, return hash/size only."""
+        try:
+            text = str(self._fdtd.getnamed(path, script_property))
+            byte_count = len(text.encode("utf-8"))
+            sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            return {
+                "property": script_property,
+                "path": path,
+                "readable": True,
+                "sha256": sha,
+                "byte_count": byte_count,
+                "summary": _summarize_script(text),
+            }
+        except Exception as exc:
+            return {
+                "property": script_property,
+                "path": path,
+                "readable": False,
+                "error": str(exc),
+            }
+
+    def probe_source_strategy(self) -> dict:
+        """Classify source configuration strategy.
+
+        Returns dict with classification and evidence.
+        Classification: explicit_object | analysis_group_setup |
+                        global_source | unresolved
+        """
+        # 1. Search all scopes for source-type objects
+        source_objects = []
+        source_keywords = ("source", "plane", "gaussian", "mode", "dipole")
+        for scope in ["::", "::model", "::model::s_params"]:
+            try:
+                self._fdtd.groupscope(scope)
+                self._fdtd.selectall()
+                count = int(self._fdtd.getnumber())
+                for i in range(1, count + 1):
+                    obj_type = str(self._fdtd.get("type", i)).lower()
+                    if any(kw in obj_type for kw in source_keywords):
+                        name = str(self._fdtd.get("name", i))
+                        if scope == "::":
+                            path = "::" + name
+                        else:
+                            path = scope + "::" + name
+                        source_objects.append({
+                            "path": path,
+                            "type": obj_type,
+                            "scope": scope,
+                        })
+            except Exception:
+                pass
+        self._fdtd.groupscope("::")
+
+        # 2. Read setup/analysis scripts from analysis groups
+        scripts = {}
+        for ag_path in ["::s_params", "::model::s_params"]:
+            for script_prop in ["setup script", "analysis script"]:
+                result = self._read_script_text_safely(ag_path, script_prop)
+                scripts.setdefault(ag_path, {})[script_prop] = result
+
+        # 3. Classify
+        classification = "unresolved"
+        evidence = {
+            "source_objects_found": source_objects,
+            "scripts_audited": scripts,
+        }
+
+        if source_objects:
+            classification = "explicit_object"
+            evidence["primary_source"] = source_objects[0]
+        else:
+            # Check scripts for source-related keywords
+            source_in_script = False
+            for ag_path, ag_scripts in scripts.items():
+                for prop, info in ag_scripts.items():
+                    if info.get("readable"):
+                        summary = info.get("summary", "").lower()
+                        if any(
+                            kw in summary for kw in source_keywords
+                        ):
+                            source_in_script = True
+            if source_in_script:
+                classification = "analysis_group_setup"
+            elif scripts:
+                classification = "analysis_group_setup"
+                evidence["note"] = (
+                    "No source object found in tree and no source keyword "
+                    "detected in script summaries. Source may be configured "
+                    "deep in setup script."
+                )
+
+        return {"classification": classification, "evidence": evidence}
+
+    # --- Monitors ---
+
+    def probe_monitors(self) -> list:
+        """Enumerate field/power monitor candidates across scopes."""
+        monitors = []
+        monitor_keywords = ("monitor", "dft", "time")
+        for scope in ["::", "::model", "::model::s_params"]:
+            try:
+                self._fdtd.groupscope(scope)
+                self._fdtd.selectall()
+                count = int(self._fdtd.getnumber())
+                for i in range(1, count + 1):
+                    obj_type = str(self._fdtd.get("type", i)).lower()
+                    if any(kw in obj_type for kw in monitor_keywords):
+                        name = str(self._fdtd.get("name", i))
+                        if scope == "::":
+                            path = "::" + name
+                        else:
+                            path = scope + "::" + name
+                        monitor = {
+                            "path": path,
+                            "type": obj_type,
+                            "scope": scope,
+                            "properties": {},
+                        }
+                        for prop in (
+                            "monitor type", "x", "y", "z",
+                            "x span", "y span", "z span",
+                            "frequency", "wavelength", "frequency points",
+                        ):
+                            try:
+                                monitor["properties"][prop] = _jsonable(
+                                    self._fdtd.getnamed(path, prop)
+                                )
+                            except Exception:
+                                pass
+                        monitors.append(monitor)
+            except Exception:
+                pass
+        self._fdtd.groupscope("::")
+        return monitors
+
+    # --- Analysis group ---
+
+    def probe_analysis_group(self, ag_paths=None) -> dict:
+        """Verify analysis group paths and result naming assumptions."""
+        if ag_paths is None:
+            ag_paths = ["::s_params", "::model::s_params"]
+        result = {}
+        for path in ag_paths:
+            ag = {"path": path, "exists": False, "type": None}
+            try:
+                count = self._fdtd.getnamednumber(path)
+            except Exception:
+                count = 0
+            if count == 0:
+                result[path] = ag
+                continue
+            ag["exists"] = True
+            try:
+                ag["type"] = str(self._fdtd.getnamed(path, "type"))
+            except Exception:
+                pass
+
+            result_naming = {"transmission": None, "s_parameter": None}
+            for prop_name in ["setup script", "analysis script"]:
+                try:
+                    text = str(self._fdtd.getnamed(path, prop_name))
+                    text_lower = text.lower()
+                    if (
+                        '"t"' in text_lower
+                        or "'t'" in text_lower
+                        or "transmission" in text_lower
+                    ):
+                        result_naming["transmission"] = {
+                            "assumed_name": "T", "found_in": prop_name,
+                        }
+                    if (
+                        '"s"' in text_lower
+                        or "'s'" in text_lower
+                        or "s21" in text_lower
+                        or "s-parameter" in text_lower
+                    ):
+                        result_naming["s_parameter"] = {
+                            "assumed_name": "S", "found_in": prop_name,
+                        }
+                    if "s21_gn" in text_lower or "S21_Gn" in text:
+                        result_naming["s_parameter"] = {
+                            "assumed_name": "S21_Gn", "found_in": prop_name,
+                        }
+                except Exception:
+                    pass
+            ag["result_naming_assumptions"] = result_naming
+            result[path] = ag
+        return result
+
+
+def _summarize_script(text: str) -> str:
+    """Extract minimal summary: first 3 non-empty, non-comment lines."""
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        lines.append(stripped[:100])
+        if len(lines) >= 3:
+            break
+    return "; ".join(lines)[:200]
 
 
 def import_lumapi():

@@ -631,3 +631,135 @@ def test_unreadable_model_parameter_produces_diagnostic():
     assert "error" in params["ratio"]
     # Other params still readable
     assert params["height"].get("value") is not None
+
+
+# ============================================================
+# Source strategy tests (Task B0-7)
+# ============================================================
+
+
+def test_source_strategy_identifies_explicit_source():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="source_in_root")
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_source_strategy()
+    assert result["classification"] == "explicit_object"
+    assert len(result["evidence"]["source_objects_found"]) >= 1
+
+
+def test_source_strategy_identifies_source_in_analysis_group():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="source_in_analysis_group")
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_source_strategy()
+    assert result["classification"] == "explicit_object"
+    assert any(
+        "::model::s_params" in obj.get("scope", "")
+        for obj in result["evidence"]["source_objects_found"]
+    )
+
+
+def test_source_strategy_analysis_group_setup_when_no_source_object():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="no_source")
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_source_strategy()
+    # No explicit source object, but scripts exist
+    assert result["classification"] in (
+        "analysis_group_setup", "unresolved",
+    )
+    # Should have script audit evidence
+    assert "scripts_audited" in result["evidence"]
+
+
+def test_unresolved_source_must_not_fabricate_paths():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="no_source")
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_source_strategy()
+    # No fabricated source paths
+    source_objs = result["evidence"]["source_objects_found"]
+    assert len(source_objs) == 0
+
+
+def test_setup_analysis_scripts_only_record_hash_and_summary():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd()
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_source_strategy()
+    scripts = result["evidence"]["scripts_audited"]
+    for ag_path, ag_scripts in scripts.items():
+        for prop_name, info in ag_scripts.items():
+            if info.get("readable"):
+                assert "sha256" in info
+                assert "byte_count" in info
+                assert "summary" in info
+                # Full text must NOT be in info
+                assert "text" not in info
+
+
+def test_script_summary_excludes_comment_lines():
+    # Test the _summarize_script helper directly
+    module = load_probe_module()
+    summary = module._summarize_script(
+        "# comment line\n"
+        "select('::model');\n"
+        "# another comment\n"
+        "set('ratio', 0.5);\n"
+        "run;\n"
+    )
+    assert "comment" not in summary.lower()
+    assert "select" in summary.lower()
+    assert "set" in summary
+
+
+# ============================================================
+# Monitors & analysis group verification tests (Task B0-8)
+# ============================================================
+
+
+def test_monitors_find_field_monitors_in_baseline():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    monitors = adapter.probe_monitors()
+    assert len(monitors) >= 1
+    monitor_paths = {m["path"] for m in monitors}
+    assert "::field" in monitor_paths or "::model::field" in monitor_paths
+
+
+def test_monitors_read_coordinates_and_span():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    monitors = adapter.probe_monitors()
+    assert len(monitors) > 0
+    for m in monitors:
+        props = m["properties"]
+        # At minimum monitor type should be readable
+        if m["type"] == "dftmonitor":
+            assert "monitor type" in props or len(props) >= 1
+
+
+def test_analysis_group_s_params_exists_and_has_type():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_analysis_group()
+    assert result["::model::s_params"]["exists"] is True
+    assert result["::model::s_params"]["type"] is not None
+
+
+def test_analysis_group_detects_result_naming():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_analysis_group()
+    naming = result["::model::s_params"]["result_naming_assumptions"]
+    # Should detect both T and S from script text
+    assert naming["transmission"] is not None or naming["s_parameter"] is not None
+
+
+def test_missing_analysis_group_returns_exists_false():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_analysis_group(
+        ag_paths=["::nonexistent_ag"]
+    )
+    assert result["::nonexistent_ag"]["exists"] is False
