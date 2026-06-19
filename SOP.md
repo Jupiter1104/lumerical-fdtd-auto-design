@@ -167,6 +167,15 @@ Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict 
 5. 不提交 runtime inventory/contract JSON。
 6. 不在此阶段修改 RPC guard 或启动真实 sweep。
 
+### Stage B1 - strict profile and contract
+
+1. Sync Windows checkout to current `origin/main`.
+2. Confirm `templates/metasurface/base_model.probe.json` has `stage_b1_ready=true`.
+3. Run `scripts\windows\generate_template_contract.bat`.
+4. Confirm `status=verified`, `verified=true`, all checks pass.
+5. Do not start a real SimulationPlan job in Stage B1.
+6. Report contract fingerprint and stop for separate real-run approval.
+
 ## SOP-011 - Stage B0.x 模板只读探针工作流
 
 ```text

@@ -120,6 +120,19 @@ type templates\metasurface\base_model.probe.json
 
 探针输出不能授权真实运行。
 
+## Generate Stage B1 template contract
+
+From `F:\lumerical-fdtd-auto-design\fdtd-auto-design`:
+
+    git pull
+    scripts\windows\generate_template_contract.bat
+
+Expected result:
+
+    template_contract status=verified fingerprint=<64 hex chars>
+
+This command reads JSON evidence only. It must not open Lumerical, mutate `.fsp`, or create jobs.
+
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。

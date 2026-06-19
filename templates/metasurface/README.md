@@ -57,3 +57,13 @@ This writes `base_model.probe.json` (git-ignored). The probe must not solve,
 modify, or save the `.fsp`. Probe output cannot authorize a real run.
 
 See `SOP-011` for the full Stage B0 workflow.
+
+## Stage B1 strict profile
+
+`template-inspection-profile.json` is the git-tracked strict contract profile.
+It records the exact canonical paths and solver evidence found by Stage B0.1.
+`base_model.contract.json` is generated at runtime and remains git-ignored.
+
+The current x/y boundary settings are preserved from evidence:
+`Anti-Symmetric` on x and `Symmetric` on y. This is a physics-review warning,
+not a contract-generation failure.

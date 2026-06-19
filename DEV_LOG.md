@@ -645,3 +645,10 @@
 - No solve, no modify, no job created.
 - Stage B0.1 complete; Stage B1 ready. Stopped, not entering Stage B1.
 
+
+## 2026-06-19 - Planned Template Contract Stage B1
+
+- Goal: generate strict template profile and runtime verified contract from Stage B0.1 probe evidence.
+- Safety: B1 is offline JSON validation only; no solve, no .fsp mutation, no job creation.
+- Stop gate: verified contract enables later real 2x2 approval request, not real execution.
+
