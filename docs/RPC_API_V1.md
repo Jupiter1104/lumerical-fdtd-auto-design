@@ -102,4 +102,12 @@ MCP 新工作流优先使用 `fdtd_job_*` 和 `fdtd_metasurface_sweep_*`；旧 `
 - `/jobs/*` 已实现 plan、start、status、tasks 和 resume；支持 `geometry-smoke` 和逐 sample `metasurface-sweep` task。
 - `real metasurface-sweep` 同一时间只允许一个活动 job；运行中会拒绝破坏性 session/model/geometry/debug/simulation 操作。
 - 服务重启会把残留 running job/task 标记为 interrupted/partial，等待用户显式 resume。
-- 取消、并发队列、优化和自动模板指纹 resume 拒绝仍是后续工作；指纹变化时应创建新 job。
+- 取消、并发队列、优化仍是后续工作。
+- `real metasurface-sweep` resume 已实现模板 SHA-256 指纹保护；模板缺失、无指纹或 SHA-256 变化时返回 HTTP 409 `resume_conflict`。
+
+## SimulationPlan MCP layer
+
+SimulationPlan validation and approval run locally in the Mac MCP process.
+Only an approved compiled request reaches the existing `/jobs/start` route.
+The RPC Server continues to enforce its existing `real_run` approval as the
+final service-side guard.

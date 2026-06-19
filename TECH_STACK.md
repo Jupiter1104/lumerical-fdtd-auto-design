@@ -140,6 +140,8 @@ jobs/<job_id>/
 - OS：macOS（Apple Silicon）
 - 语言：Python 3.10+
 - **不安装 Lumerical，不依赖 `lumapi`。**
+- **自然语言编译**：自然语言 -> Agent 生成 Plan JSON -> SimulationPlan validator/compiler -> MCP Plan tools -> RpcClient.jobs_* -> Windows /jobs/*
+- **SimulationPlan v0.1**：仅支持 `metasurface_unit_cell`；CPU 必须 `EXPRESS_MODE=0`；材料/光源/监视器/边界/网格均继承模板（`template_inherited`）；task 预算上限 100；Python 不解析自然语言。
 - MCP 框架：**FastMCP**（`mcp.server.fastmcp`）
 - 依赖：
   - `mcp>=1.0.0`：MCP 协议
@@ -184,6 +186,7 @@ rpc_server.py              # ← 本文件在 Windows 端，Mac 端不运行
 | Geometry | `fdtd_add_fdtd_region`, `fdtd_add_rect`, `fdtd_add_circle` |
 | Jobs | `fdtd_job_plan`, `fdtd_job_start`, `fdtd_job_status`, `fdtd_job_tasks`, `fdtd_job_resume` |
 | Metasurface Jobs | `fdtd_metasurface_sweep_plan`, `fdtd_metasurface_sweep_start` |
+| SimulationPlan | `fdtd_simulation_plan_validate`, `fdtd_simulation_plan_approve`, `fdtd_simulation_plan_start` |
 | Sweep (legacy) | `fdtd_sweep_config_get`, `fdtd_sweep_config_set(...)`, `fdtd_sweep_run(phases)`, `fdtd_sweep_status(task_id)`, `fdtd_sweep_monitor(task_id)` |
 | Results | `fdtd_results_list`, `fdtd_results_download(filepath)` |
 | Export | `fdtd_export_gds`, `fdtd_export_data` |

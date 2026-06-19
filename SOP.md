@@ -106,13 +106,15 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5000
 
 ## SOP-007 - 从自然语言到真实仿真
 
-1. 将用户需求整理为 `SimulationPlan`：器件、材料、光源、监视器、边界、网格、参数空间、FOM、验收条件和最大预算。
-2. 运行 `plan`，验证 schema、路径、单位和对象名，展开任务并报告总数。
-3. 必要时运行 `mock`，验证 RPC、job/task 状态、后处理和报告链；明确标记为非物理数据。
-4. 生成真实运行审批摘要：config/model、job 目录、GUI 状态、scheduler、资源、任务数或最大迭代数、输出覆盖风险。
-5. 只有用户明确批准该摘要后，才以 `real` 启动作业。
-6. 启动后保存 `job_id`，使用轻量 status 接口轮询，不用单次长 HTTP/MCP 调用等待。
-7. 完成后生成 summary、质量报告和关键可视化，再交由人工判断物理合理性。
+1. Agent 将自然语言需求编译为 Plan JSON。
+2. 调用 `fdtd_simulation_plan_validate` 规范化、验证和指纹。
+3. 向用户展示 `defaults_applied`、assumptions、warnings、task count 和 fingerprint。
+4. 获得用户明确批准后调用 `fdtd_simulation_plan_approve`。
+5. 用返回的 Plan 审批启动 `fdtd_simulation_plan_start(mode="mock")`。
+6. 对于 real：另外生成 template contract 和真实运行摘要，取得单独批准后以 `mode="real"` 启动。
+7. 审批或模板指纹变化后绝不复用旧审批。
+8. 启动后保存 `job_id`，使用轻量 status 接口轮询，不用单次长 HTTP/MCP 调用等待。
+9. 完成后生成 summary、质量报告和关键可视化，再交由人工判断物理合理性。
 
 ## SOP-008 - Job 状态、失败和恢复
 
@@ -122,6 +124,7 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5000
 4. 服务重启时，残留 `running` job 会转为 `partial`，残留 `running` task 会转为 `failed/interrupted`；不会自动重新求解。
 5. 临时 session/IO 错误允许原参数重试一次；物理参数、mesh、boundary、scheduler 或模板指纹变化必须形成新 job/revision。
 6. `resume` 只跳过已有完整结果的 task，不覆盖历史结果。
+7. real metasurface resume 返回 `resume_conflict` 当模板缺失、无指纹或 SHA-256 变化时；必须创建新 job。
 7. 不因失败自动扩大扫描；下一轮以建议文件和新审批处理。
 
 当前 `/jobs/*` v1 已实现：plan、start、status、tasks、resume。`geometry-smoke` 已真实通过；`metasurface-sweep` 已接入逐 sample task、原生 Phase 1-4、quality report 和 evidence index。真实 sweep 由 `/jobs/start` 异步返回 `202 + job_id`。

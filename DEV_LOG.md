@@ -506,3 +506,16 @@
   - `.venv/bin/python -m pytest -q`：`124 passed`。
   - `rg -n "localhost:5001|127\\.0\\.0\\.1:5001|5001" src/server.py README.md TECH_STACK.md docs/RPC_API_V1.md .mcp.json tests/test_mcp_config.py || true`：无输出。
   - `rg -n 'sweep_config|sweep_run|sweep_status|/sweep' src/tools/jobs.py tests/test_mcp_jobs_tools.py`：无输出。
+
+## 2026-06-19 - SimulationPlan MVP
+
+- 目标：把自然语言 Agent 与已验证 `/jobs/*` 执行链之间增加可审批的结构化计划层。
+- 实现：
+  - SimulationPlan v0.1 默认值、校验、任务预算和稳定 SHA-256。
+  - Plan 审批、real 双层审批和模板契约本地防线。
+  - metasurface period/height compiler。
+  - 三个 MCP Plan 工具：`fdtd_simulation_plan_validate/approve/start`。
+  - real metasurface resume 模板指纹保护。
+  - 离线 approved mock 端到端测试。
+- 限制：未启动真实 FDTD；材料、光源、监视器、边界和网格仍继承模板。
+- 验证：见 Task 9 最终输出。

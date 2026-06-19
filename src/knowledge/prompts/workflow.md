@@ -1,13 +1,13 @@
 # FDTD Simulation Workflow Guide
 
-Status note: the standard workflow below describes the target production
-workflow. The current MCP surface registers session, model, geometry, sweep,
-results, export, and knowledge tools. Job/task endpoints support persistent
-`geometry-smoke` and sample-level `metasurface-sweep` workflows. Sweep jobs
-write a quality report and an evidence-first index; real metasurface sweeps
-start asynchronously through `/jobs/start` and run inside the v1 RPC service.
-Optimization, cancellation, and template-fingerprint resume protection are
-not yet available.
+Status note: SimulationPlan v0.1 is now implemented. The language model
+writes Plan JSON. Python validates and compiles it. Do not send a
+natural-language string to the RPC Server.
+
+The MCP surface includes `fdtd_simulation_plan_validate/approve/start` as
+the recommended entry point. `fdtd_metasurface_sweep_*` tools remain as
+lower-level convenience wrappers. Real metasurface resume now verifies
+template SHA-256 fingerprints and rejects changed templates.
 
 ## Standard Workflow
 
