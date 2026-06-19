@@ -203,3 +203,15 @@ def test_metasurface_start_sends_real_approval_when_approved():
     assert request["approval"] == {"approved": True, "approved_for": "real_run"}
     assert request["sweep"]["config"]["RATIO_LIST"] == [0.2]
     assert request["sweep"]["config"]["PERIOD_LIST"] == [390e-9]
+
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_legacy_sweep_tools_are_marked_as_legacy():
+    text = (ROOT / "src/tools/simulation.py").read_text(encoding="utf-8")
+
+    assert "Legacy compatibility tools" in text
+    assert "Prefer fdtd_job_* and fdtd_metasurface_sweep_*" in text

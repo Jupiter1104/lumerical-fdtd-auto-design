@@ -175,14 +175,16 @@ tests/
 rpc_server.py              # ← 本文件在 Windows 端，Mac 端不运行
 ```
 
-### MCP 工具一览（22 个）
+### MCP 工具一览（29 个）
 
 | 模块 | 工具 |
 |---|---|
 | Session | `fdtd_health`, `fdtd_session_start(hide)`, `fdtd_session_pause(seconds)`, `fdtd_session_close` |
 | Model | `fdtd_save`, `fdtd_load` |
 | Geometry | `fdtd_add_fdtd_region`, `fdtd_add_rect`, `fdtd_add_circle` |
-| Sweep | `fdtd_sweep_config_get`, `fdtd_sweep_config_set(...)`, `fdtd_sweep_run(phases)`, `fdtd_sweep_status(task_id)`, `fdtd_sweep_monitor(task_id)` |
+| Jobs | `fdtd_job_plan`, `fdtd_job_start`, `fdtd_job_status`, `fdtd_job_tasks`, `fdtd_job_resume` |
+| Metasurface Jobs | `fdtd_metasurface_sweep_plan`, `fdtd_metasurface_sweep_start` |
+| Sweep (legacy) | `fdtd_sweep_config_get`, `fdtd_sweep_config_set(...)`, `fdtd_sweep_run(phases)`, `fdtd_sweep_status(task_id)`, `fdtd_sweep_monitor(task_id)` |
 | Results | `fdtd_results_list`, `fdtd_results_download(filepath)` |
 | Export | `fdtd_export_gds`, `fdtd_export_data` |
 | Knowledge | `fdtd_device_template`, `fdtd_list_devices`, `fdtd_troubleshoot`, `fdtd_best_practices` |

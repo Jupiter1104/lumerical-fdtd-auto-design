@@ -13,9 +13,9 @@
 - 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → 4 点真实 sweep，结果 4/4 valid
 - 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已完成真实 2×2 原生 `metasurface-sweep` 验证，结果 4/4 valid、quality `pass`。新服务默认端口已提升为 `5000`；`metasurface-sweep` 由 `/jobs/start` 异步返回 `202 + job_id`，包含 Phase 1-4、quality report 和 evidence index。
 - 注意：旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖。
+- MCP Server 已新增 `/jobs/*` 工具：`fdtd_job_plan/start/status/tasks/resume`，以及 metasurface 便捷工具 `fdtd_metasurface_sweep_plan/start`。旧 `fdtd_sweep_*` 仅保留为 legacy compatibility。
 - 主要下一步：
   - 补 resume 指纹保护（模板 SHA-256 变化时拒绝 resume）
-  - MCP Server 接入 Claude Code（创建 `.mcp.json`）
 
 ## 核心文档
 

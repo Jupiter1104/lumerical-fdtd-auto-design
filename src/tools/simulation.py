@@ -1,10 +1,8 @@
-"""Sweep pipeline tools for FDTD MCP Server.
+"""Legacy compatibility tools for the historical `/sweep/*` RPC shape.
 
-Matches the Windows RPC sweep pipeline:
-  Phase 1: batch .fsp generation from template
-  Phase 2: parallel FDTD solving via Lumerical Job Manager
-  Phase 3: S-parameter extraction → .mat file
-  Phase 4: MATLAB post-process → heatmaps (Transmission.svg, Dephasing.svg)
+Prefer fdtd_job_* and fdtd_metasurface_sweep_* for the current RPC API v1
+persistent job workflow. These tools are kept for backward compatibility only
+and do not target the current `/jobs/*` routes.
 """
 
 from typing import List, Optional
@@ -20,6 +18,8 @@ def register_simulation_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_sweep_config_get() -> dict:
         """
+        Legacy compatibility tool. Prefer fdtd_job_* and fdtd_metasurface_sweep_* for new work.
+
         Get the current sweep configuration from the Windows RPC Server.
 
         Returns all sweep parameters: sweep axis, ranges, material settings,
@@ -43,6 +43,8 @@ def register_simulation_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         fdtd_capacity: Optional[int] = None,
     ) -> dict:
         """
+        Legacy compatibility tool. Prefer fdtd_job_* and fdtd_metasurface_sweep_* for new work.
+
         Update sweep configuration parameters on the Windows RPC Server.
 
         Only provide the parameters you want to change. Omitted parameters
@@ -86,6 +88,8 @@ def register_simulation_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_sweep_run(phases: Optional[List[int]] = None) -> dict:
         """
+        Legacy compatibility tool. Prefer fdtd_job_* and fdtd_metasurface_sweep_* for new work.
+
         Start the sweep pipeline on the Windows machine.
 
         This runs in the background. Use fdtd_sweep_status() to monitor progress.
@@ -109,6 +113,8 @@ def register_simulation_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_sweep_status(task_id: Optional[str] = None) -> dict:
         """
+        Legacy compatibility tool. Prefer fdtd_job_* and fdtd_metasurface_sweep_* for new work.
+
         Poll the status of a running sweep.
 
         Args:
@@ -124,6 +130,8 @@ def register_simulation_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_sweep_monitor(task_id: str, poll_interval: float = 15.0, max_wait: float = 3600.0) -> dict:
         """
+        Legacy compatibility tool. Prefer fdtd_job_* and fdtd_metasurface_sweep_* for new work.
+
         Monitor a sweep until completion, polling at regular intervals.
 
         This is a convenience wrapper around fdtd_sweep_status() that blocks

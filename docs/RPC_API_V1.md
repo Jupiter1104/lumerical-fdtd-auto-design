@@ -63,6 +63,8 @@
 | GET | `/jobs/<job_id>/tasks` | 读取 task 摘要 |
 | POST | `/jobs/<job_id>/resume` | 仅重试 pending/failed task |
 
+MCP 新工作流优先使用 `fdtd_job_*` 和 `fdtd_metasurface_sweep_*`；旧 `fdtd_sweep_*` 工具仅保留为 legacy compatibility，不对应当前新 `rpc_server.py` 的 `/jobs/*` 主路径。
+
 ## 兼容旧路由
 
 这些别名只保留在 Server 端，新 Client/MCP 不调用：
