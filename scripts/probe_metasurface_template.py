@@ -20,6 +20,7 @@ from src.template_probe import (
     PROBE_VERSION,
     atomic_write_json,
     file_sha256,
+    prepare_lumapi_environment,
     probe_fingerprint,
     probe_installation_identity,
     validate_probe_installation,
