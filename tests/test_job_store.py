@@ -379,3 +379,89 @@ def test_mock_resume_does_not_require_template_fingerprint(tmp_path):
     resumed = store.resume(job["job_id"])
 
     assert len(resumed["task_ids"]) == 4
+
+
+from unittest.mock import patch
+
+
+def test_jobs_plan_notifies_after_persistent_files_exist(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+
+    with patch("src.job_store.notify_job_state") as notify:
+        job = store.plan(
+            {"mode": "mock", "job_type": "geometry-smoke"}
+        )
+
+    job_dir = tmp_path / "jobs" / job["job_id"]
+    notify.assert_called_once_with(job_dir, "planned")
+    assert (job_dir / "status.json").exists()
+    assert (job_dir / "summary.json").exists()
+    assert (job_dir / "run.log").exists()
+
+
+def test_mock_start_notifies_succeeded_once(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+
+    with patch("src.job_store.notify_job_state") as notify:
+        job = store.start(
+            {"mode": "mock", "job_type": "geometry-smoke"}
+        )
+
+    notify.assert_called_once_with(
+        tmp_path / "jobs" / job["job_id"],
+        "succeeded",
+    )
+
+
+def test_finalize_notifies_partial_after_summary_is_written(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.plan(
+        {
+            "mode": "mock",
+            "job_type": "geometry-smoke",
+            "tasks": [
+                {"operation": "geometry-smoke", "input": {}},
+                {"operation": "geometry-smoke", "input": {}},
+            ],
+        }
+    )
+    store.update_task(job["job_id"], "task_0001", state="succeeded")
+    store.update_task(job["job_id"], "task_0002", state="failed")
+
+    with patch("src.job_store.notify_job_state") as notify:
+        result = store.finalize(job["job_id"])
+
+    assert result["state"] == "partial"
+    notify.assert_called_once_with(
+        tmp_path / "jobs" / job["job_id"],
+        "partial",
+    )
+
+
+def test_fail_marks_unfinished_tasks_failed_and_notifies(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.enqueue(
+        {
+            "mode": "real",
+            "job_type": "geometry-smoke",
+            "approval": {
+                "approved": True,
+                "approved_for": "real_run",
+            },
+        }
+    )
+
+    with patch("src.job_store.notify_job_state") as notify:
+        result = store.fail(
+            job["job_id"], RuntimeError("solver crashed")
+        )
+
+    task = store.list_tasks(job["job_id"])["tasks"][0]
+    assert result["state"] == "failed"
+    assert task["state"] == "failed"
+    assert task["error"]["type"] == "RuntimeError"
+    assert task["error"]["message"] == "solver crashed"
+    notify.assert_called_once_with(
+        tmp_path / "jobs" / job["job_id"],
+        "failed",
+    )

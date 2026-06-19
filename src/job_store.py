@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
+from src.job_notifications import notify_job_state
 from src.sweep_job import (
     build_sweep_tasks,
     normalize_sweep_input,
@@ -323,6 +324,8 @@ class JobStore:
             f"{created_at} Job {state}.\n",
             encoding="utf-8",
         )
+        if state == "planned":
+            notify_job_state(job_dir, "planned")
         return {
             "job_id": job_id,
             "state": state,
@@ -407,6 +410,13 @@ class JobStore:
         self.append_log(job_id, "Job running.")
         return self._write_status(job_id, "running", "Job running.")
 
+    def _finish(self, job_id: str, state: str) -> dict:
+        self._write_status(job_id, state, f"Job {state}.")
+        self._write_summary(job_id)
+        self.append_log(job_id, f"Job {state}.")
+        notify_job_state(self._job_dir(job_id), state)
+        return self.get(job_id)
+
     def finalize(self, job_id: str) -> dict:
         counts = self._task_counts(self._tasks(job_id))
         if counts["failed"]:
@@ -415,10 +425,24 @@ class JobStore:
             state = "partial"
         else:
             state = "succeeded"
-        self._write_status(job_id, state, f"Job {state}.")
-        self._write_summary(job_id)
-        self.append_log(job_id, f"Job {state}.")
-        return self.get(job_id)
+        return self._finish(job_id, state)
+
+    def fail(self, job_id: str, error: BaseException) -> dict:
+        error_payload = {
+            "type": error.__class__.__name__,
+            "message": str(error),
+            "details": {},
+        }
+        for task in self._tasks(job_id):
+            if task["state"] in {"pending", "running"}:
+                self.update_task(
+                    job_id,
+                    task["task_id"],
+                    state="failed",
+                    phase=task.get("phase", "failed"),
+                    error=error_payload,
+                )
+        return self._finish(job_id, "failed")
 
     def recover_interrupted_jobs(self) -> list:
         recovered = []
@@ -447,12 +471,7 @@ class JobStore:
                             "details": {},
                         },
                     )
-            self._write_status(
-                job_id,
-                "partial",
-                "Job interrupted; resume required.",
-            )
-            self._write_summary(job_id)
+            self._finish(job_id, "partial")
             self.append_log(job_id, "Recovered interrupted job.")
             recovered.append(job_id)
         return recovered
@@ -525,8 +544,7 @@ class JobStore:
             state = "partial"
         else:
             state = "succeeded"
-        self._write_status(job_id, state, f"Job {state}.")
-        self._write_summary(job_id)
+        self._finish(job_id, state)
 
     def _run_task(
         self,
