@@ -726,3 +726,6 @@
 - 约束：C3 不启动 FDTD、不创建 job、不 resume、不重启 RPC、不修改模板或 .fsp。
 - 后续：人工审批 exact C3 packet 后，Stage C4 才能启动真实 production-discovery sweep。
 
+
+- 验证：compileall exit 0；pytest -q 全量通过 292 passed；forbidden-operation scan 无实际调用；生成 runtime/approvals/production_sweep_c3_packet.json，status=ready_for_human_approval，task_count=25。
+
