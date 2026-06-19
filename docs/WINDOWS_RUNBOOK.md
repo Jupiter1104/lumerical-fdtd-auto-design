@@ -209,3 +209,37 @@ production_sweep_c3 status=ready_for_human_approval task_count=25
 
 This command is local-only. It must not start FDTD, call `/jobs/start`, resume a job, or modify `.fsp` files.
 
+
+
+## 飞书持久 Job 通知
+
+设置用户环境变量：
+
+```powershell
+setx FDTD_FEISHU_WEBHOOK "https://open.feishu.cn/open-apis/bot/v2/hook/你的Webhook"
+```
+
+然后运行 `scripts\windowsestart_rpc.bat`。不要把 Webhook 写入仓库、请求 JSON 或日志。
+
+不启动 FDTD 的 smoke：
+
+```powershell
+$body = @{
+  mode = "mock"
+  job_type = "geometry-smoke"
+} | ConvertTo-Json
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:5000/jobs/start" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+成功标准：
+
+- HTTP 返回持久 `job_id`。
+- 飞书收到 `FDTD job succeeded`。
+- job 目录的 `notifications.json` 只含发送状态和时间，不含 Webhook。
+- `run.log` 含发送成功记录。
+- 不启动真实 FDTD 求解。
+

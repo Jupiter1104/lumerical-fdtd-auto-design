@@ -729,3 +729,12 @@
 
 - 验证：compileall exit 0；pytest -q 全量通过 292 passed；forbidden-operation scan 无实际调用；生成 runtime/approvals/production_sweep_c3_packet.json，status=ready_for_human_approval，task_count=25。
 
+
+## 2026-06-19 - Persistent job Feishu notifications
+
+- 复用旧 Autosweep 的标准库飞书 Webhook 模式，接入新项目持久 JobStore。
+- `/jobs/plan` 通知 planned；mock/real 通知 succeeded、failed、partial；普通 SimulationPlan 校验和 preflight 不通知。
+- 通知采用 `notifications.json` 幂等记录，Webhook 只从 `FDTD_FEISHU_WEBHOOK` 读取，发送失败不影响 job 状态。
+- Agent 工作流改为提交后返回 job_id 并停止轮询，收到飞书后再分析。
+- 验证：记录 focused/full pytest、compileall 和 Windows mock smoke 的实际结果。
+

@@ -244,3 +244,13 @@ Stage A inventory
 6. 如果用户批准该 exact packet，后续进入 Stage C4 才允许提交 `compiled_request` 启动真实 sweep。
 7. 若需要高度超过 700 nm 或改变 mesh/boundary/source/template，必须另起模板/mesh review，不得复用 C3 默认 packet。
 
+
+## SOP-015 - 持久 job 飞书通知与 Agent 退出
+
+1. Windows 用户环境设置 `FDTD_FEISHU_WEBHOOK`，Webhook 不写入 Git 或 job 输入。
+2. 重启 RPC 服务，让 `pythonw.exe` 继承环境变量。
+3. `/jobs/plan` 创建持久 job 后发送 `planned`；mock/real 到达 `succeeded`、`failed` 或 `partial` 后发送终态通知。
+4. Agent 提交长任务并确认收到 `job_id` 后停止轮询；只有用户明确询问进度时才做一次只读查询。
+5. 用户收到飞书后，让 Agent 读取 `status.json`、`summary.json`、`quality_report.json` 和 evidence-first 结果。
+6. 飞书发送失败只查 `run.log`，不得据此重跑或改变 job 状态。
+
