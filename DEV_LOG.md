@@ -700,3 +700,13 @@
   - task_0004 ratio=0.8, period=540 nm, T=0.9353412881, phase=-0.9494834758 rad.
 - Evidence: `evidence/index.json`, `evidence/transmission_heatmap.svg`, `evidence/phase_heatmap.svg`, `results/sweep_results.csv`, `quality_report.json`.
 - Note: polling script expected terminal state `completed`, but service uses `succeeded`; manual interrupt of polling did not affect the completed job.
+
+## 2026-06-19 - Stage C2 real result review
+
+- 目标：为 C1 真实 2×2 SimulationPlan job 增加 evidence-only 拉取、本地审计和人类可读报告流程。
+- 实现：`src/real_result_review.py`、`scripts/collect_real_result_review.py` 和测试。
+- 从 Windows 复制 14 个 evidence-first 文件（JSON/CSV/SVG/tasks），0 个 .fsp 模型文件。
+- 生成 `runtime/reviews/job_20260619_213418_metasurface_sweep/review.json` 和 `real_2x2_review.md`。
+- 软件链结论: pass (7/7 chain checks pass)。物理审核: human_review_required。Phase span: 1.3273 rad，远低于 2π。
+- 约束：C2 不启动 FDTD、不创建 job、不 resume、不重启 RPC、不修改模板。
+

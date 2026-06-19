@@ -185,6 +185,22 @@ Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict 
 5. Report plan fingerprint, template SHA, contract fingerprint, task count, resource, express mode, mesh accuracy, and warnings.
 6. Stop. Do not call `fdtd_simulation_plan_start(mode="real")` until the human approves this exact packet.
 
+## SOP-013 - Stage C2 real result review
+
+1. 确认 Stage C1 job 已结束，且不会在 C2 启动、resume 或扩大任何真实仿真。
+2. 从 Windows job 目录只复制 evidence-first 文件：`manifest.json`、`status.json`、`summary.json`、`quality_report.json`、`results/sweep_results.csv`、`results/sweep_summary.json`、`evidence/index.json`、关键 SVG 和 task JSON。
+3. 默认不复制 `models/*.fsp`；只有调试或人工明确要求时才单独复制模型文件。
+4. 将 C0 preflight packet 与 C1 evidence 放到 git-ignored `runtime/reviews/<job_id>/`。
+5. 运行：
+   ```bash
+   .venv/bin/python scripts/collect_real_result_review.py \
+     --job-dir runtime/reviews/<job_id>/evidence_copy \
+     --preflight runtime/reviews/<job_id>/approval/real_2x2_preflight.json \
+     --output-dir runtime/reviews/<job_id>
+   ```
+6. 审核 `review.json` 和 `real_2x2_review.md`：软件链可以自动判定 pass/fail；物理正确性必须由人审核。
+7. 若报告建议扩大 sweep 或改变物理设置，必须进入新的 plan/preflight/approval 阶段，不能由 C2 自动启动。
+
 ## SOP-011 - Stage B0.x 模板只读探针工作流
 
 ```text

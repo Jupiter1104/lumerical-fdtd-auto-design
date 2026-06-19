@@ -17,7 +17,7 @@
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
-- 当前 checkpoint：Stage C0 real 2×2 SimulationPlan preflight。C0 builds `runtime/approvals/real_2x2_preflight.json` from the verified Stage B1 contract. C0 does not start real FDTD. The generated packet must be approved separately before Stage C1.
+- 当前 checkpoint：Stage C2 real result review。C1 已完成真实 2×2 SimulationPlan run，job `job_20260619_213418_metasurface_sweep` 为 `succeeded`，4/4 task 成功，quality `pass`。C2 已将 evidence-only 结果复制到本地 git-ignored `runtime/reviews/` 并生成 `review.json` 与 `real_2x2_review.md`。软件链结论为 `pass`；物理结论仍需人工审核，且 2×2 phase span 约 `1.3273 rad`，不足以作为最终 2π phase library。
 
 ## 核心文档
 
