@@ -124,3 +124,41 @@ def test_real_is_locally_rejected_without_second_approval():
     assert response["ok"] is False
     assert response["error"]["type"] == "real_run_approval_required"
     assert rpc.calls == []
+
+
+def test_real_preflight_is_local_only_and_does_not_call_rpc():
+    from tests.test_template_contract import valid_b1_contract
+
+    tools, rpc = registered_tools()
+    validated = tools["fdtd_simulation_plan_validate"]({})
+    approval = tools["fdtd_simulation_plan_approve"](
+        validated["normalized_plan"],
+        validated["plan_fingerprint"],
+    )["approval"]
+
+    packet = tools["fdtd_simulation_plan_real_preflight"](
+        plan=validated["normalized_plan"],
+        plan_approval=approval,
+        template_contract=valid_b1_contract(),
+    )
+
+    assert packet["ok"] is True
+    assert packet["status"] == "ready_for_human_approval"
+    assert packet["task_count"] == 4
+    assert rpc.calls == []
+
+
+def test_real_preflight_rejects_without_plan_approval_and_does_not_call_rpc():
+    from tests.test_template_contract import valid_b1_contract
+
+    tools, rpc = registered_tools()
+
+    packet = tools["fdtd_simulation_plan_real_preflight"](
+        plan={},
+        plan_approval=None,
+        template_contract=valid_b1_contract(),
+    )
+
+    assert packet["ok"] is False
+    assert packet["error"]["type"] == "plan_approval_required"
+    assert rpc.calls == []

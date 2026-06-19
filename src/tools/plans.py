@@ -5,6 +5,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
 from ..plan_compilers.metasurface import compile_metasurface_plan
+from ..real_run_preflight import build_real_run_preflight_packet
 from ..rpc_client.client import RpcClient
 from ..simulation_plan import (
     approve_simulation_plan,
@@ -70,3 +71,22 @@ def register_plan_tools(mcp: FastMCP, rpc: RpcClient) -> None:
             mode=mode,
         )
         return rpc.jobs_start(request)
+
+    @mcp.tool()
+    def fdtd_simulation_plan_real_preflight(
+        plan: dict,
+        plan_approval: Optional[dict],
+        template_contract: dict,
+    ) -> dict:
+        """
+        Build a local real-run approval packet without calling RPC.
+
+        This does not start FDTD. It only verifies the Plan approval and
+        Stage B1 contract, compiles the exact real request shape, and returns
+        the packet that must be approved by the human before Stage C1.
+        """
+        return build_real_run_preflight_packet(
+            plan,
+            plan_approval,
+            template_contract,
+        )

@@ -20,6 +20,7 @@ def test_all_expected_mcp_tools_register():
         "fdtd_simulation_plan_validate",
         "fdtd_simulation_plan_approve",
         "fdtd_simulation_plan_start",
+        "fdtd_simulation_plan_real_preflight",
         "fdtd_job_plan",
         "fdtd_job_start",
         "fdtd_job_status",
