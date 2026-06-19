@@ -31,3 +31,15 @@ The template must contain:
 
 `NativeSweepRunner` treats this template as read-only. Generated point models
 are saved under `jobs\<job_id>\models\`.
+
+## Read-only inventory
+
+After installing the template, run:
+
+```cmd
+scripts\windows\inspect_metasurface_template.bat
+```
+
+This opens the template with `hide=True` using Lumerical v242 Python and writes
+`base_model.inventory.json`. It must not solve, modify, or save the `.fsp`.
+Inventory is discovery evidence only and cannot authorize a real run.

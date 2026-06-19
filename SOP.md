@@ -143,5 +143,26 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5000
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m compileall -q rpc_server.py src scripts tests
-.venv/bin/python -m pytest -q  # 当前 114 passed
+.venv/bin/python -m pytest -q
 ```
+
+## SOP-010 - Template contract 工作流
+
+Stage A 只读 inventory 的完整流程：
+
+```text
+install -> inventory -> stop -> review inventory -> commit strict profile
+```
+
+Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict profile、生成 verified contract 或启动真实运行。
+
+1. 在 Windows 上安装模板 (`install_metasurface_template.bat`)。
+2. 运行只读 inventory (`inspect_metasurface_template.bat`)。
+3. 审核 `base_model.inventory.json`：
+   - `inventory_only=true`、`status=inventory`。
+   - 模板 SHA-256 有效、Lumerical 版本不为 unknown。
+   - known objects 均 `count=1`、`status=pass`。
+   - objects 非空、errors 为空。
+4. 根据真实 inventory 编写 strict contract profile（进入 Stage B）。
+5. 不提交 runtime inventory/contract JSON。
+6. 不在此阶段修改 RPC guard 或启动真实 sweep。

@@ -541,3 +541,13 @@
 - 验证：
   - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
   - `.venv/bin/python -m pytest -q`：`168 passed`。
+
+## 2026-06-19 - Template Contract Stage A
+
+- 目标：建立纯 Python 指纹工具和 Windows 只读模板 inventory。
+- 安全边界：只读打开模板；不求解、不修改、不保存；inventory 不能批准 real。
+- 实现：
+  - 新增 `src/template_contract.py` 的稳定 JSON、SHA-256、原子写入和 inventory profile 校验。
+  - 新增受控 inventory profile、只读 Lumerical adapter、inventory CLI 和 Windows `.bat` 入口。
+  - runtime inventory/contract JSON 被 Git 忽略。
+- Windows inventory：尚未执行；等待离线验证和 Windows 同步。

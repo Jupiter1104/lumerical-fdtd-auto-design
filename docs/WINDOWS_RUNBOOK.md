@@ -74,6 +74,29 @@ scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_
 - 目标文件是 `templates\metasurface\base_model.fsp`，该 `.fsp` 被 Git 忽略。
 - 每个真实 sweep 的 `manifest.json` 会记录模板 SHA-256、大小和修改时间。
 
+## 模板只读 inventory
+
+安装模板后，在 Windows 本地运行一次只读 inventory：
+
+```cmd
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+git pull --ff-only
+scripts\windows\inspect_metasurface_template.bat
+type templates\metasurface\base_model.inventory.json
+```
+
+成功标准：
+
+- `inventory_only=true`
+- `status=inventory`
+- Lumerical version 不是 "unknown"
+- 所有 known objects 的 `count=1` 且 `status=pass`
+- objects 列表非空
+- `cleanup_state=closed`
+- 未创建真实 job
+
+Inventory 仅用于发现对象，不能批准真实运行。
+
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。
