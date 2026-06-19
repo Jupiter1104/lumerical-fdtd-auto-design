@@ -682,3 +682,21 @@
 - No FDTD solve, no .fsp mutation, no real job created.
 - Stage C0 complete. Stopped before Stage C1 real run approval.
 
+
+## 2026-06-19 - Stage C1 real 2x2 SimulationPlan run
+
+- Approval: user explicitly approved exact Stage C0 packet.
+- Plan fingerprint: e8c957df2c8112c876142998ecb088fa9c78f4a6c34037834a1cddae24c87810.
+- Request: real `metasurface-sweep`, 2x2 period sweep, CPU, express_mode=0, processes=1, capacity=1, phases=[1,2,3,4].
+- RPC: Windows service restarted on 127.0.0.1:5000; Mac used SSH tunnel local 5501 -> Windows 127.0.0.1:5000 because local 5000 was occupied by macOS Control Center.
+- Job: `job_20260619_213418_metasurface_sweep`; `/jobs/start` returned HTTP 202.
+- Final state: `succeeded`; tasks succeeded 4/4, failed 0.
+- Template SHA recorded in manifest: `03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176`.
+- Quality report: conclusion=`pass`, valid_count=4, missing_count=0, requires_human_review=true.
+- Results:
+  - task_0001 ratio=0.2, period=390 nm, T=0.9672581224, phase=-0.6737631334 rad.
+  - task_0002 ratio=0.8, period=390 nm, T=0.7300105243, phase=-1.9698575482 rad.
+  - task_0003 ratio=0.2, period=540 nm, T=0.9679605820, phase=-0.6426061423 rad.
+  - task_0004 ratio=0.8, period=540 nm, T=0.9353412881, phase=-0.9494834758 rad.
+- Evidence: `evidence/index.json`, `evidence/transmission_heatmap.svg`, `evidence/phase_heatmap.svg`, `results/sweep_results.csv`, `quality_report.json`.
+- Note: polling script expected terminal state `completed`, but service uses `succeeded`; manual interrupt of polling did not affect the completed job.

@@ -181,3 +181,14 @@
 - 根因：`pythonw.exe`/Flask/lumapi 后台进程被强制停止后，Windows TCP 状态清理可能滞后；也可能与未正常退出的 close/CLOSE_WAIT 连接有关。
 - 修复：确认新端口 health 可用、旧端口 HTTP 不响应、旧 PID 无进程对象；等待系统释放。若同端口必须立即复用，优先重启 RPC 所在 Windows 会话/机器，而不是反复启动多个服务。
 - 预防：端口切换时用新端口启动；同端口重启前先等待端口完全释放并检查 PID 文件、进程对象和 `netstat` 三者一致。
+
+## 2026-06-19 - Mac 本地 5000 可能被系统服务占用导致 SSH 隧道空响应
+
+- 现象：`ssh -L 5000:localhost:5000` 返回成功，但 `curl http://127.0.0.1:5000/health` 得到 empty reply 或连接异常；Windows 本机 `http://127.0.0.1:5000/health` 正常。
+- 根因：Mac 本机已有系统进程（实测 `ControlCe...`/Control Center）监听 `*:5000`，与 SSH 本地转发发生冲突或劫持本地请求；同时 `localhost` 在远端解析也可能引入 IPv6/IPv4 差异。
+- 修复：改用未占用的本地端口并显式指定远端 IPv4，例如：
+  ```bash
+  ssh -f -N -o ExitOnForwardFailure=yes -L 5501:127.0.0.1:5000 32482@192.168.31.26
+  curl http://127.0.0.1:5501/health
+  ```
+- 预防：建立隧道前先检查 `lsof -nP -iTCP:<local_port> -sTCP:LISTEN`；如果本地 5000 不干净，统一使用 5501 或其他空闲端口，不要误判为 Windows RPC 故障。
