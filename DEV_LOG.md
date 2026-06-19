@@ -652,3 +652,12 @@
 - Safety: B1 is offline JSON validation only; no solve, no .fsp mutation, no job creation.
 - Stop gate: verified contract enables later real 2x2 approval request, not real execution.
 
+
+## 2026-06-19 - Stage B1 Windows contract generation
+
+- Windows HEAD: 11d7b99, LAPTOP-OR14JLNC.
+- Contract: status=verified, verified=True, all 16 checks pass.
+- Contract fingerprint: bdfe2fceccbaeeadd3bcc0c349708b15d56c3b0090349037e726f475f63413d1.
+- No solve, no .fsp mutation, no job creation, no real sweep.
+- Stage B1 complete. Stopped before real 2x2 SimulationPlan approval.
+
