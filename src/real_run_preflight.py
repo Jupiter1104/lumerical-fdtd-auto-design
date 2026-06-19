@@ -47,6 +47,16 @@ def build_real_run_preflight_packet(
             contract_summary.get("error", {}),
         )
 
+    if validated["task_count"] != 4:
+        return _error(
+            "preflight_task_count_mismatch",
+            "Stage C0 preflight requires exactly four tasks.",
+            {
+                "expected": 4,
+                "actual": validated["task_count"],
+            },
+        )
+
     fingerprint = validated["plan_fingerprint"]
     candidate_real_run_approval = {
         "approved": True,

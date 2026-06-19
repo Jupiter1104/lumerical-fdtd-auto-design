@@ -96,6 +96,75 @@ def test_preflight_packet_rejects_unverified_contract():
     assert packet["error"]["type"] == "template_contract_required"
 
 
+def test_preflight_packet_rejects_task_count_not_equal_to_four():
+    """Stage C0 is the first real 2x2 preflight — must reject non-4 tasks."""
+    from src.real_run_preflight import build_real_run_preflight_packet
+
+    # task_count=2: 1 ratio × 2 periods
+    plan_2 = {
+        "device": {"type": "metasurface_unit_cell"},
+        "sweep": {
+            "axis": "period",
+            "ratio_values": [0.5],
+            "period_values_m": [3.9e-7, 5.4e-7],
+        },
+    }
+    validated_2, approval_2 = _approved_default_plan()
+    # Use the smaller plan for validation but approved default plan
+    from src.simulation_plan import (
+        approve_simulation_plan,
+        validate_simulation_plan,
+    )
+    v2 = validate_simulation_plan(plan_2)
+    app2 = approve_simulation_plan(
+        v2["normalized_plan"], v2["plan_fingerprint"]
+    )["approval"]
+    assert v2["task_count"] == 2  # precondition
+    p2 = build_real_run_preflight_packet(
+        v2["normalized_plan"], app2, _valid_b1_contract()
+    )
+    assert p2["ok"] is False
+    assert p2["error"]["type"] == "preflight_task_count_mismatch"
+    assert p2["error"]["details"]["expected"] == 4
+    assert p2["error"]["details"]["actual"] == 2
+
+    # task_count=6: 3 ratios × 2 periods
+    plan_6 = {
+        "device": {"type": "metasurface_unit_cell"},
+        "sweep": {
+            "axis": "period",
+            "ratio_values": [0.2, 0.5, 0.8],
+            "period_values_m": [3.9e-7, 5.4e-7],
+        },
+    }
+    v6 = validate_simulation_plan(plan_6)
+    app6 = approve_simulation_plan(
+        v6["normalized_plan"], v6["plan_fingerprint"]
+    )["approval"]
+    assert v6["task_count"] == 6  # precondition
+    p6 = build_real_run_preflight_packet(
+        v6["normalized_plan"], app6, _valid_b1_contract()
+    )
+    assert p6["ok"] is False
+    assert p6["error"]["type"] == "preflight_task_count_mismatch"
+    assert p6["error"]["details"]["actual"] == 6
+
+
+def test_default_plan_still_has_task_count_four():
+    """Sanity check: default empty plan must remain task_count=4."""
+    from src.real_run_preflight import build_real_run_preflight_packet
+
+    validated, approval = _approved_default_plan()
+    contract = _valid_b1_contract()
+    assert validated["task_count"] == 4
+    packet = build_real_run_preflight_packet(
+        validated["normalized_plan"], approval, contract
+    )
+    assert packet["ok"] is True
+    assert packet["task_count"] == 4
+    assert packet["status"] == "ready_for_human_approval"
+
+
 # --- CLI test (Task C0-5) ---
 
 
