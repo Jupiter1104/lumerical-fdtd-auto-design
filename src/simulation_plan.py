@@ -306,6 +306,172 @@ def _approval_summary(
     }
 
 
+def _error(error_type: str, message: str, details=None) -> dict:
+    return {
+        "ok": False,
+        "error": {
+            "type": error_type,
+            "message": message,
+            "details": details or {},
+        },
+    }
+
+
+def _finite_positive(value) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) > 0
+    )
+
+
+def _validate_unique_numbers(
+    values,
+    *,
+    path: str,
+    predicate,
+) -> dict | None:
+    if not isinstance(values, list) or not values:
+        return _error(
+            "plan_validation_error",
+            f"{path} must be a non-empty list.",
+            {"path": path},
+        )
+    if any(not predicate(value) for value in values):
+        return _error(
+            "plan_validation_error",
+            f"{path} contains an invalid value.",
+            {"path": path, "values": values},
+        )
+    if len(set(values)) != len(values):
+        return _error(
+            "plan_validation_error",
+            f"{path} must not contain duplicates.",
+            {"path": path, "values": values},
+        )
+    return None
+
+
+def _validate_normalized_plan(plan: dict) -> dict | None:
+    if plan["schema_version"] != SCHEMA_VERSION:
+        return _error(
+            "plan_validation_error",
+            f"schema_version must be {SCHEMA_VERSION}.",
+        )
+    if plan["device"]["type"] != "metasurface_unit_cell":
+        return _error(
+            "unsupported_plan_feature",
+            "SimulationPlan v0.1 only supports metasurface_unit_cell.",
+            {"device_type": plan["device"]["type"]},
+        )
+    for key in TEMPLATE_INHERITED_KEYS:
+        if plan["physics"][key] != {"strategy": "template_inherited"}:
+            return _error(
+                "unsupported_plan_feature",
+                f"physics.{key} must use template_inherited.",
+                {"path": f"physics.{key}"},
+            )
+    if not isinstance(plan["physics"]["requirements"], dict):
+        return _error(
+            "plan_validation_error",
+            "physics.requirements must be an object.",
+        )
+
+    sweep = plan["sweep"]
+    if sweep["axis"] not in {"period", "height"}:
+        return _error(
+            "plan_validation_error",
+            "sweep.axis must be period or height.",
+        )
+    ratio_error = _validate_unique_numbers(
+        sweep["ratio_values"],
+        path="sweep.ratio_values",
+        predicate=lambda value: (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and 0 < float(value) < 1
+        ),
+    )
+    if ratio_error:
+        return ratio_error
+
+    if sweep["axis"] == "period":
+        y_path = "sweep.period_values_m"
+        y_values = sweep["period_values_m"]
+        fixed_path = "sweep.fixed_height_m"
+        fixed_value = sweep["fixed_height_m"]
+    else:
+        y_path = "sweep.height_values_m"
+        y_values = sweep["height_values_m"]
+        fixed_path = "sweep.fixed_period_m"
+        fixed_value = sweep["fixed_period_m"]
+    y_error = _validate_unique_numbers(
+        y_values,
+        path=y_path,
+        predicate=_finite_positive,
+    )
+    if y_error:
+        return y_error
+    if not _finite_positive(fixed_value):
+        return _error(
+            "plan_validation_error",
+            f"{fixed_path} must be a positive finite number.",
+        )
+
+    execution = plan["execution"]
+    if execution["resource"] != "CPU":
+        return _error(
+            "unsupported_plan_feature",
+            "SimulationPlan v0.1 only supports CPU.",
+        )
+    if execution["express_mode"] != 0:
+        return _error(
+            "plan_validation_error",
+            "CPU requires execution.express_mode=0.",
+        )
+    for key in ("processes", "capacity"):
+        value = execution[key]
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            return _error(
+                "plan_validation_error",
+                f"execution.{key} must be a positive integer.",
+            )
+    if not isinstance(execution["hide"], bool):
+        return _error(
+            "plan_validation_error",
+            "execution.hide must be boolean.",
+        )
+    if (
+        not isinstance(execution["template"], str)
+        or not execution["template"].strip()
+    ):
+        return _error(
+            "plan_validation_error",
+            "execution.template must be a non-empty path string.",
+        )
+
+    acceptance = plan["acceptance"]
+    if acceptance["required_quality"] not in {"pass", "warning", "fail"}:
+        return _error(
+            "plan_validation_error",
+            "acceptance.required_quality is invalid.",
+        )
+    rate = acceptance["required_task_success_rate"]
+    if (
+        not isinstance(rate, (int, float))
+        or isinstance(rate, bool)
+        or not math.isfinite(float(rate))
+        or not 0 <= float(rate) <= 1
+    ):
+        return _error(
+            "plan_validation_error",
+            "required_task_success_rate must be between 0 and 1.",
+        )
+    return None
+
+
 def validate_simulation_plan(plan: dict) -> dict:
     if not isinstance(plan, dict):
         return {
@@ -318,7 +484,19 @@ def validate_simulation_plan(plan: dict) -> dict:
         }
 
     normalized, defaults_applied = _normalize(plan)
+
+    validation_error = _validate_normalized_plan(normalized)
+    if validation_error:
+        return validation_error
+
     task_count = _task_count(normalized)
+    if task_count > MAX_TASKS:
+        return _error(
+            "task_budget_exceeded",
+            f"SimulationPlan v0.1 allows at most {MAX_TASKS} tasks.",
+            {"task_count": task_count, "maximum": MAX_TASKS},
+        )
+
     fingerprint = plan_fingerprint(normalized)
     assumptions = [
         {
@@ -329,7 +507,19 @@ def validate_simulation_plan(plan: dict) -> dict:
             ),
         }
     ]
+    requirements = normalized["physics"]["requirements"]
     warnings = []
+    if requirements:
+        warnings.append(
+            {
+                "type": "template_requirement_unverified",
+                "message": (
+                    "physics.requirements are recorded for template-contract "
+                    "verification; the compiler will not modify the .fsp."
+                ),
+                "details": copy.deepcopy(requirements),
+            }
+        )
     return {
         "ok": True,
         "normalized_plan": normalized,

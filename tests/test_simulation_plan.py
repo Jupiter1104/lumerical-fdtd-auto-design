@@ -66,3 +66,105 @@ def test_plan_change_changes_fingerprint():
     )
 
     assert first["plan_fingerprint"] != second["plan_fingerprint"]
+
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("plan", "error_type"),
+    [
+        ({"schema_version": "1.0"}, "plan_validation_error"),
+        (
+            {"device": {"type": "waveguide"}},
+            "unsupported_plan_feature",
+        ),
+        (
+            {"sweep": {"ratio_values": [0.0]}},
+            "plan_validation_error",
+        ),
+        (
+            {"sweep": {"ratio_values": [0.2, 0.2]}},
+            "plan_validation_error",
+        ),
+        (
+            {"sweep": {"period_values_m": [-1.0]}},
+            "plan_validation_error",
+        ),
+        (
+            {"execution": {"resource": "GPU", "express_mode": 1}},
+            "unsupported_plan_feature",
+        ),
+        (
+            {"execution": {"resource": "CPU", "express_mode": 1}},
+            "plan_validation_error",
+        ),
+        (
+            {
+                "physics": {
+                    "mesh": {"strategy": "explicit", "accuracy": 6}
+                }
+            },
+            "unsupported_plan_feature",
+        ),
+    ],
+)
+def test_invalid_or_unsupported_plans_are_rejected(plan, error_type):
+    result = validate_simulation_plan(plan)
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == error_type
+
+
+def test_task_budget_is_limited_to_100():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "ratio_values": [index / 100 for index in range(1, 12)],
+                "period_values_m": [
+                    (390 + index) * 1e-9 for index in range(10)
+                ],
+            }
+        }
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "task_budget_exceeded"
+    assert result["error"]["details"]["task_count"] == 110
+
+
+def test_physics_requirements_are_preserved_with_warning():
+    result = validate_simulation_plan(
+        {
+            "physics": {
+                "requirements": {
+                    "wavelength_m": 810e-9,
+                    "pillar_material": "Si3N4",
+                }
+            }
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["normalized_plan"]["physics"]["requirements"] == {
+        "wavelength_m": 810e-9,
+        "pillar_material": "Si3N4",
+    }
+    assert result["warnings"][0]["type"] == "template_requirement_unverified"
+
+
+def test_height_sweep_has_expected_task_count():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "height",
+                "ratio_values": [0.2, 0.8],
+                "height_values_m": [600e-9, 800e-9],
+                "fixed_period_m": 470e-9,
+            }
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["task_count"] == 4
+    assert "period_values_m" not in result["normalized_plan"]["sweep"]
