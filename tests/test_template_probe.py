@@ -714,33 +714,55 @@ def test_structure_candidates_handle_missing_object_path():
 # ============================================================
 
 
-def test_fdtd_configuration_reads_dimension_express_mode():
+def test_fdtd_configuration_prefers_model_solver_path():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd()
+    config = module.ProbeAdapter(fdtd).probe_fdtd_configuration()
+    assert config["canonical_path"] == "::model::FDTD"
+    dim = config["properties"]["dimension"]
+    assert dim["value"] == "3D"
+    assert dim["read_method"] == "getnamed"
+
+
+def test_fdtd_configuration_falls_back_to_selected_get():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="solver_getnamed_unreadable")
+    config = module.ProbeAdapter(fdtd).probe_fdtd_configuration()
+    em = config["properties"]["express_mode"]
+    assert em == {
+        "status": "readable",
+        "value": 0,
+        "read_method": "selected_get",
+        "scope": "::model",
+        "object_name": "FDTD",
+    }
+    bc = config["properties"]["x_min_bc"]
+    assert bc["read_method"] == "selected_get"
+
+
+def test_fdtd_cpu_requires_real_zero_express_mode():
+    module = load_probe_module()
+    config = module.ProbeAdapter(
+        FakeProbeFdtd(scenario="express_mode_one")
+    ).probe_fdtd_configuration()
+    assert config["cpu_express_mode_evidence"]["cpu_confirmed"] is False
+
+
+def test_mesh_configuration_separates_global_and_override_mesh():
     module = load_probe_module()
     adapter = module.ProbeAdapter(FakeProbeFdtd())
-    config = adapter.probe_fdtd_configuration()
-    assert config["path"] == "FDTD"
-    props = config["properties"]
-    assert props.get("dimension") == "3D"
-    # express_mode not set in baseline FakeProbeFdtd, may be unreadable
-    assert "dimension" in props
+    fdtd = adapter.probe_fdtd_configuration()
+    mesh = adapter.probe_mesh_configuration()
 
-
-def test_fdtd_configuration_cpu_express_mode_evidence():
-    module = load_probe_module()
-    adapter = module.ProbeAdapter(FakeProbeFdtd())
-    config = adapter.probe_fdtd_configuration()
-    # CPU express mode evidence should be present even if express_mode unreadable
-    assert "cpu_express_mode_evidence" in config
-
-
-def test_mesh_configuration_reads_mesh_accuracy():
-    module = load_probe_module()
-    adapter = module.ProbeAdapter(FakeProbeFdtd())
-    config = adapter.probe_mesh_configuration()
-    assert len(config["meshes"]) >= 1
-    for mesh in config["meshes"]:
-        if mesh["exists"]:
-            assert "properties" in mesh
+    assert fdtd["properties"]["mesh_accuracy"]["value"] == 3
+    assert mesh["global_mesh_accuracy_source"] == "::model::FDTD"
+    override = next(
+        item for item in mesh["overrides"]
+        if item["path"] == "::model::mesh"
+    )
+    assert override["properties"]["dx"]["value"] == 5e-9
+    assert override["properties"]["override_x_mesh"]["value"] == 1
+    assert "mesh_accuracy" not in override["properties"]
 
 
 def test_model_parameters_read_ratio_height_period():
@@ -798,17 +820,23 @@ def test_source_strategy_identifies_source_in_analysis_group():
     )
 
 
-def test_source_strategy_analysis_group_setup_when_no_source_object():
+def test_source_strategy_without_explicit_evidence_is_unresolved():
     module = load_probe_module()
-    fdtd = FakeProbeFdtd(scenario="no_source")
-    adapter = module.ProbeAdapter(fdtd)
-    result = adapter.probe_source_strategy()
-    # No explicit source object, but scripts exist
-    assert result["classification"] in (
-        "analysis_group_setup", "unresolved",
-    )
-    # Should have script audit evidence
-    assert "scripts_audited" in result["evidence"]
+    result = module.ProbeAdapter(
+        FakeProbeFdtd(scenario="source_unresolved")
+    ).probe_source_strategy()
+    assert result["classification"] == "unresolved"
+    assert result["evidence"]["source_objects_found"] == []
+    assert "primary_source" not in result["evidence"]
+
+
+def test_source_strategy_requires_script_creation_evidence():
+    module = load_probe_module()
+    result = module.ProbeAdapter(
+        FakeProbeFdtd(scenario="source_script_evidence")
+    ).probe_source_strategy()
+    assert result["classification"] == "analysis_group_setup"
+    assert result["evidence"]["script_source_evidence"]
 
 
 def test_unresolved_source_must_not_fabricate_paths():
@@ -1200,3 +1228,104 @@ def test_prepare_lumapi_environment_missing_paths_records_errors(tmp_path):
     assert diagnostics["api_python_exists"] is False
     assert diagnostics["bin_exists"] is False
     assert len(diagnostics["errors"]) >= 2
+
+
+# ============================================================
+# Stage B1 readiness tests (Task B0.1-7)
+# ============================================================
+
+
+def test_stage_b1_readiness_passes_only_complete_probe():
+    from src.template_probe import evaluate_stage_b1_readiness
+
+    readiness = evaluate_stage_b1_readiness(
+        template_sha_matches=True,
+        installation_confirmable=True,
+        fdtd_configuration={
+            "canonical_path": "::model::FDTD",
+            "properties": {
+                "dimension": {"status": "readable", "value": "3D"},
+                "express_mode": {"status": "readable", "value": 0},
+                "mesh_accuracy": {"status": "readable", "value": 3},
+                "x_min_bc": {"status": "readable", "value": "PML"},
+                "x_max_bc": {"status": "readable", "value": "PML"},
+                "y_min_bc": {"status": "readable", "value": "Periodic"},
+                "y_max_bc": {"status": "readable", "value": "Periodic"},
+                "z_min_bc": {"status": "readable", "value": "PML"},
+                "z_max_bc": {"status": "readable", "value": "PML"},
+            },
+            "cpu_express_mode_evidence": {"cpu_confirmed": True},
+        },
+        resolved_roles={
+            "pillar": True,
+            "substrate": True,
+            "source": True,
+            "monitors": True,
+            "analysis_group": True,
+        },
+        model_parameters={
+            "ratio": {"value": 0.8},
+            "height": {"value": 7e-7},
+            "period": {"value": 4.7e-7},
+        },
+        errors=[],
+    )
+    assert readiness == {"ready": True, "blockers": []}
+
+
+@pytest.mark.parametrize(
+    "mutation,expected_blocker",
+    [
+        ({"template_sha_matches": False}, "template_sha_mismatch"),
+        ({"installation_confirmable": False}, "installation_unconfirmable"),
+        (
+            {"fdtd_configuration": {"canonical_path": None}},
+            "canonical_fdtd_unconfirmed",
+        ),
+        (
+            {"errors": [{"type": "test", "message": "x"}]},
+            "probe_has_errors",
+        ),
+    ],
+)
+def test_stage_b1_readiness_blocks_on_missing_evidence(
+    mutation, expected_blocker
+):
+    from src.template_probe import evaluate_stage_b1_readiness
+
+    base = {
+        "template_sha_matches": True,
+        "installation_confirmable": True,
+        "fdtd_configuration": {
+            "canonical_path": "::model::FDTD",
+            "properties": {
+                "dimension": {"status": "readable", "value": "3D"},
+                "express_mode": {"status": "readable", "value": 0},
+                "mesh_accuracy": {"status": "readable", "value": 3},
+                "x_min_bc": {"status": "readable", "value": "PML"},
+                "x_max_bc": {"status": "readable", "value": "PML"},
+                "y_min_bc": {"status": "readable", "value": "Periodic"},
+                "y_max_bc": {"status": "readable", "value": "Periodic"},
+                "z_min_bc": {"status": "readable", "value": "PML"},
+                "z_max_bc": {"status": "readable", "value": "PML"},
+            },
+            "cpu_express_mode_evidence": {"cpu_confirmed": True},
+        },
+        "resolved_roles": {
+            "pillar": True,
+            "substrate": True,
+            "source": True,
+            "monitors": True,
+            "analysis_group": True,
+        },
+        "model_parameters": {
+            "ratio": {"value": 0.8},
+            "height": {"value": 7e-7},
+            "period": {"value": 4.7e-7},
+        },
+        "errors": [],
+    }
+    base.update(mutation)
+    readiness = evaluate_stage_b1_readiness(**base)
+    assert readiness["ready"] is False
+    assert expected_blocker in readiness["blockers"]

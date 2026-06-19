@@ -271,74 +271,153 @@ class ProbeAdapter:
             }
         return results
 
+    # --- Fixed-object property read helper ---
+
+    def _read_fixed_object_property(
+        self,
+        *,
+        canonical_path: str,
+        scope: str,
+        object_name: str,
+        property_name: str,
+    ) -> dict:
+        """Read a property via getnamed, falling back to selected get."""
+        try:
+            return {
+                "status": "readable",
+                "value": _jsonable(
+                    self._fdtd.getnamed(canonical_path, property_name)
+                ),
+                "read_method": "getnamed",
+                "path": canonical_path,
+            }
+        except Exception as getnamed_exc:
+            try:
+                self._fdtd.groupscope(scope)
+                self._fdtd.select(object_name)
+                return {
+                    "status": "readable",
+                    "value": _jsonable(self._fdtd.get(property_name)),
+                    "read_method": "selected_get",
+                    "scope": scope,
+                    "object_name": object_name,
+                }
+            except Exception as selected_exc:
+                return {
+                    "status": "unreadable",
+                    "path": canonical_path,
+                    "getnamed_error": str(getnamed_exc),
+                    "selected_get_error": str(selected_exc),
+                }
+            finally:
+                self._fdtd.groupscope("::")
+
     # --- FDTD configuration ---
 
-    def probe_fdtd_configuration(self, fdtd_path: str = "FDTD") -> dict:
-        """Read FDTD solver configuration without modifying."""
+    def probe_fdtd_configuration(self) -> dict:
+        """Read FDTD solver configuration from canonical path.
+
+        Uses ::model::FDTD as the canonical path with selected-get fallback.
+        """
+        canonical_path = "::model::FDTD"
+        scope = "::model"
+        object_name = "FDTD"
         properties = {
             "type": "type",
             "dimension": "dimension",
             "express_mode": "express mode",
+            "mesh_accuracy": "mesh accuracy",
             "simulation_time": "simulation time",
+            "x_min_bc": "x min bc",
+            "x_max_bc": "x max bc",
+            "y_min_bc": "y min bc",
+            "y_max_bc": "y max bc",
+            "z_min_bc": "z min bc",
+            "z_max_bc": "z max bc",
+            "x": "x",
+            "y": "y",
+            "z": "z",
+            "x_span": "x span",
+            "y_span": "y span",
+            "z_span": "z span",
         }
-        result = {"path": fdtd_path, "properties": {}}
+        result = {
+            "canonical_path": canonical_path,
+            "properties": {},
+        }
         for key, prop_name in properties.items():
-            try:
-                result["properties"][key] = _jsonable(
-                    self._fdtd.getnamed(fdtd_path, prop_name)
-                )
-            except Exception as exc:
-                result["properties"][key] = {
-                    "status": "unreadable", "error": str(exc),
-                }
-        # Evidence-based CPU/express_mode check
-        em = result["properties"].get("express_mode", {})
-        if isinstance(em, (int, float)):
-            result["cpu_express_mode_evidence"] = {
-                "express_mode_value": int(em),
-                "cpu_confirmed": em == 0,
-                "note": (
-                    "express_mode=0 confirms CPU resource"
-                    if em == 0
-                    else f"express_mode={int(em)} unexpected for CPU (0)"
-                ),
-            }
-        else:
-            result["cpu_express_mode_evidence"] = {
-                "express_mode_value": None,
-                "cpu_confirmed": False,
-                "note": "express mode could not be read; CPU resource unconfirmed",
-            }
+            result["properties"][key] = self._read_fixed_object_property(
+                canonical_path=canonical_path,
+                scope=scope,
+                object_name=object_name,
+                property_name=prop_name,
+            )
+
+        express = result["properties"]["express_mode"]
+        cpu_confirmed = (
+            express.get("status") == "readable"
+            and express.get("value") == 0
+        )
+        result["cpu_express_mode_evidence"] = {
+            "express_mode_value": (
+                express.get("value")
+                if express.get("status") == "readable"
+                else None
+            ),
+            "cpu_confirmed": cpu_confirmed,
+            "evidence_source": express.get("read_method"),
+        }
         return result
 
     # --- Mesh configuration ---
 
-    def probe_mesh_configuration(self, mesh_paths=None) -> dict:
-        """Read mesh accuracy from candidate mesh objects."""
-        if mesh_paths is None:
-            mesh_paths = ["::mesh", "::model::mesh"]
-        result = {"meshes": []}
-        for path in mesh_paths:
-            mesh_entry = {"path": path, "exists": False, "properties": {}}
-            try:
-                count = self._fdtd.getnamednumber(path)
-            except Exception:
-                count = 0
-            if count == 0:
-                result["meshes"].append(mesh_entry)
-                continue
-            mesh_entry["exists"] = True
-            for prop in ["mesh accuracy", "type"]:
-                try:
-                    mesh_entry["properties"][prop] = _jsonable(
-                        self._fdtd.getnamed(path, prop)
+    def probe_mesh_configuration(self) -> dict:
+        """Separate global mesh accuracy from mesh override.
+
+        Global accuracy is read from ::model::FDTD.
+        Override mesh properties are read from ::model::mesh.
+        """
+        properties = {
+            "type": "type",
+            "based_on_a_structure": "based on a structure",
+            "override_x_mesh": "override x mesh",
+            "override_y_mesh": "override y mesh",
+            "override_z_mesh": "override z mesh",
+            "dx": "dx",
+            "dy": "dy",
+            "dz": "dz",
+            "x": "x",
+            "y": "y",
+            "z": "z",
+            "x_span": "x span",
+            "y_span": "y span",
+            "z_span": "z span",
+        }
+        override = {
+            "path": "::model::mesh",
+            "exists": False,
+            "properties": {},
+        }
+        try:
+            count = self._fdtd.getnamednumber("::model::mesh")
+        except Exception:
+            count = 0
+        if count == 1:
+            override["exists"] = True
+            for key, prop_name in properties.items():
+                override["properties"][key] = (
+                    self._read_fixed_object_property(
+                        canonical_path="::model::mesh",
+                        scope="::model",
+                        object_name="mesh",
+                        property_name=prop_name,
                     )
-                except Exception as exc:
-                    mesh_entry["properties"][prop] = {
-                        "status": "unreadable", "error": str(exc),
-                    }
-            result["meshes"].append(mesh_entry)
-        return result
+                )
+
+        return {
+            "global_mesh_accuracy_source": "::model::FDTD",
+            "overrides": [override],
+        }
 
     # --- Model parameters ---
 
@@ -368,11 +447,29 @@ class ProbeAdapter:
     # --- Source strategy ---
 
     def _read_script_text_safely(self, path: str, script_property: str) -> dict:
-        """Read script text from analysis group, return hash/size only."""
+        """Read script text from analysis group, return hash/size/markers only.
+
+        Full script text is never stored in the output.
+        """
         try:
             text = str(self._fdtd.getnamed(path, script_property))
             byte_count = len(text.encode("utf-8"))
             sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            source_markers = (
+                "addplane",
+                "addgaussian",
+                "addmode",
+                "adddipole",
+                "addtfsf",
+                "setglobalsource",
+                "wavelength start",
+                "wavelength stop",
+                "injection axis",
+            )
+            lowered = text.lower()
+            found_markers = [
+                marker for marker in source_markers if marker in lowered
+            ]
             return {
                 "property": script_property,
                 "path": path,
@@ -380,6 +477,7 @@ class ProbeAdapter:
                 "sha256": sha,
                 "byte_count": byte_count,
                 "summary": _summarize_script(text),
+                "source_markers": found_markers,
             }
         except Exception as exc:
             return {
@@ -428,36 +526,34 @@ class ProbeAdapter:
                 result = self._read_script_text_safely(ag_path, script_prop)
                 scripts.setdefault(ag_path, {})[script_prop] = result
 
-        # 3. Classify
+        # 3. Collect script-based source evidence
+        script_source_evidence = []
+        for ag_path, ag_scripts in scripts.items():
+            for prop, info in ag_scripts.items():
+                if info.get("readable") and info.get("source_markers"):
+                    script_source_evidence.append({
+                        "ag_path": ag_path,
+                        "script_property": prop,
+                        "source_markers": info["source_markers"],
+                    })
+
+        # 4. Classify: explicit > script evidence > global > unresolved
+        global_source_evidence = []  # no reliable global source read
         classification = "unresolved"
         evidence = {
             "source_objects_found": source_objects,
             "scripts_audited": scripts,
+            "script_source_evidence": script_source_evidence,
+            "global_source_evidence": global_source_evidence,
         }
 
         if source_objects:
             classification = "explicit_object"
             evidence["primary_source"] = source_objects[0]
-        else:
-            # Check scripts for source-related keywords
-            source_in_script = False
-            for ag_path, ag_scripts in scripts.items():
-                for prop, info in ag_scripts.items():
-                    if info.get("readable"):
-                        summary = info.get("summary", "").lower()
-                        if any(
-                            kw in summary for kw in source_keywords
-                        ):
-                            source_in_script = True
-            if source_in_script:
-                classification = "analysis_group_setup"
-            elif scripts:
-                classification = "analysis_group_setup"
-                evidence["note"] = (
-                    "No source object found in tree and no source keyword "
-                    "detected in script summaries. Source may be configured "
-                    "deep in setup script."
-                )
+        elif script_source_evidence:
+            classification = "analysis_group_setup"
+        elif global_source_evidence:
+            classification = "global_source"
 
         return {"classification": classification, "evidence": evidence}
 
@@ -622,6 +718,8 @@ def _failure_probe(
         "analysis_group": {},
         "warnings": [],
         "errors": [{"type": error_type, "message": message}],
+        "stage_b1_ready": False,
+        "stage_b1_blockers": ["probe_failed"],
     }
     probe["probe_fingerprint"] = probe_fingerprint(probe)
     return probe
@@ -755,6 +853,58 @@ def build_probe(
     else:
         status = "probe"
 
+    # Stage B1 readiness
+    def _has_readable_candidate(candidates_dict, role, path):
+        role_data = candidates_dict.get(role, {})
+        for c in role_data.get("candidates", []):
+            if c.get("path") == path and c.get("exists"):
+                return True
+        return False
+
+    resolved_roles = {
+        "pillar": _has_readable_candidate(
+            role_candidates.get("structure", {}), "pillar", "::model::pillar"
+        ),
+        "substrate": _has_readable_candidate(
+            role_candidates.get("structure", {}), "substrate", "::model::substrate"
+        ),
+        "source": (
+            source.get("classification") == "explicit_object"
+            and any(
+                item.get("path") == "::model::s_params::source"
+                for item in source.get("evidence", {}).get(
+                    "source_objects_found", []
+                )
+            )
+        ),
+        "monitors": bool(monitors),
+        "analysis_group": (
+            analysis_group.get("::model::s_params", {}).get("exists")
+            is True
+        ),
+    }
+
+    from src.template_probe import (
+        EXPECTED_TEMPLATE_SHA256,
+        evaluate_stage_b1_readiness,
+    )
+
+    readiness = evaluate_stage_b1_readiness(
+        template_sha_matches=(
+            template_id["sha256"] == EXPECTED_TEMPLATE_SHA256
+        ),
+        installation_confirmable=install_id["confirmable"],
+        fdtd_configuration=fdtd_config,
+        resolved_roles=resolved_roles,
+        model_parameters=model_params,
+        errors=errors,
+    )
+    for blocker in readiness["blockers"]:
+        warnings.append({
+            "type": "stage_b1_blocker",
+            "blocker": blocker,
+        })
+
     probe = {
         "probe_version": PROBE_VERSION,
         "probe_only": True,
@@ -784,6 +934,8 @@ def build_probe(
         "analysis_group": analysis_group,
         "warnings": warnings,
         "errors": errors,
+        "stage_b1_ready": readiness["ready"],
+        "stage_b1_blockers": readiness["blockers"],
     }
     probe["probe_fingerprint"] = probe_fingerprint(probe)
     return probe
