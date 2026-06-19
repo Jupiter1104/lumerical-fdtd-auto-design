@@ -519,3 +519,5 @@
   - 离线 approved mock 端到端测试。
 - 限制：未启动真实 FDTD；材料、光源、监视器、边界和网格仍继承模板。
 - 验证：见 Task 9 最终输出。
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`158 passed`。
