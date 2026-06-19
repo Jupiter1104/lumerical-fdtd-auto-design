@@ -28,3 +28,10 @@
 - 无效做法：把复杂 PowerShell 逻辑写进 `.bat` 单行，错误容易被窗口吞掉；用 `python.exe` 挂在批处理窗口下不适合常驻服务。
 - 可复用经验：Windows 常驻控制进程应集中到 PowerShell 管理脚本，`.bat` 只做入口；Python 后台服务优先用 `pythonw.exe`。
 - 下一步调整：真实 v1 smoke 已通过；进入持久 job/task 设计。
+
+## 2026-06-19 - 最终目标差距快照
+
+- 有效做法：先把“自然语言 → SimulationPlan → 审批 → 真实 job → evidence review”闭环在 metasurface unit-cell 上跑通，再扩大设计空间。Stage C1/C2 已证明软件链可审计，C3 plan 将进入 25-task 有界探索。
+- 无效做法：把 2×2 结果误当成物理设计库。C2 的 phase span 只有约 `1.3273 rad`，只能证明自动化链路，不足以支撑最终 2π phase library。
+- 可复用经验：后续每次扩大 sweep 或改变物理设置，都应先形成新的 packet 和人工审批；质量报告、物理审核和下一轮建议必须分离。
+- 下一步调整：短期目标是完成 C3/C4/C5（生产扫参审批包、真实 25-task sweep、phase/transmission 设计级分析）。中期目标是补 typed modeling recipes，让“自然语言自动建模”从模板参数化走向更多器件类型。

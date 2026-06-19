@@ -710,3 +710,10 @@
 - 软件链结论: pass (7/7 chain checks pass)。物理审核: human_review_required。Phase span: 1.3273 rad，远低于 2π。
 - 约束：C2 不启动 FDTD、不创建 job、不 resume、不重启 RPC、不修改模板。
 
+## 2026-06-19 - Planned Stage C3 production sweep design packet
+
+- 目标：基于 C2 审计结论，为下一轮更大但有界的真实 sweep 写执行计划；本阶段只准备审批包，不启动 FDTD。
+- 计划文件：`docs/superpowers/plans/2026-06-19-production-sweep-design-packet.md`。
+- 默认路线：25-task `ratio × height` 粗扫，ratio `[0.2, 0.35, 0.5, 0.65, 0.8]`，height `[500, 550, 600, 650, 700] nm`，fixed period `470 nm`，CPU，`EXPRESS_MODE=0`，`include_models=false`。
+- 安全边界：Stage C0 的 2×2 preflight 继续锁死为 4 tasks；C3 必须新增独立 production packet builder。高度不超过 `700 nm`，避免越过当前模板/mesh 已验证边界。
+- 后续：交给 Claude Code 执行 C3 plan；生成 `runtime/approvals/production_sweep_c3_packet.json` 后停在人工审批，Stage C4 才能在明确批准 exact packet 后启动真实 sweep。

@@ -9,15 +9,15 @@
 ## 当前状态
 
 - 阶段：MVP 验证完成，通用建模能力补全中
-- 文档基线：2026-06-18 — API v1、Windows 本地重启脚本、真实 smoke 和短 job 流程已对齐到代码
-- 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → 4 点真实 sweep，结果 4/4 valid
+- 文档基线：2026-06-19 — API v1、持久 job/task、SimulationPlan、模板 contract、真实 2×2、C2 review 和 C3 plan 已对齐到代码/计划
+- 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → Stage C1 真实 2×2 SimulationPlan sweep，结果 4/4 valid；Stage C2 evidence review 软件链 `pass`
 - 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已完成真实 2×2 原生 `metasurface-sweep` 验证，结果 4/4 valid、quality `pass`。新服务默认端口已提升为 `5000`；`metasurface-sweep` 由 `/jobs/start` 异步返回 `202 + job_id`，包含 Phase 1-4、quality report 和 evidence index。
 - 注意：旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖。
 - MCP Server 已新增 `/jobs/*` 工具：`fdtd_job_plan/start/status/tasks/resume`，以及 metasurface 便捷工具 `fdtd_metasurface_sweep_plan/start`。旧 `fdtd_sweep_*` 仅保留为 legacy compatibility。
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
-- 当前 checkpoint：Stage C2 real result review。C1 已完成真实 2×2 SimulationPlan run，job `job_20260619_213418_metasurface_sweep` 为 `succeeded`，4/4 task 成功，quality `pass`。C2 已将 evidence-only 结果复制到本地 git-ignored `runtime/reviews/` 并生成 `review.json` 与 `real_2x2_review.md`。软件链结论为 `pass`；物理结论仍需人工审核，且 2×2 phase span 约 `1.3273 rad`，不足以作为最终 2π phase library。
+- 当前 checkpoint：Stage C2 real result review 已完成；Stage C3 production sweep design packet 已写成执行计划。C1 真实 2×2 job `job_20260619_213418_metasurface_sweep` 为 `succeeded`，4/4 task 成功，quality `pass`。C2 已将 evidence-only 结果复制到本地 git-ignored `runtime/reviews/` 并生成 `review.json` 与 `real_2x2_review.md`；软件链结论为 `pass`。物理结论仍需人工审核，且 2×2 phase span 约 `1.3273 rad`，不足以作为最终 2π phase library。下一步执行 `docs/superpowers/plans/2026-06-19-production-sweep-design-packet.md`，只生成 25-task C3 审批包，不自动启动 FDTD。
 
 ## 核心文档
 
