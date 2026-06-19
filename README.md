@@ -17,7 +17,7 @@
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
-- 当前下一步：根据 probe 结果编写 Stage B1 strict profile，不再运行 inventory。
+- 当前下一步：Windows 重新运行 Stage B0.1 只读 probe；只有 stage_b1_ready=true 才编写 Stage B1 strict profile。
 
 ## 核心文档
 

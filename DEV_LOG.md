@@ -618,3 +618,10 @@
   - **FDTD 配置**：root `FDTD` 不可通过 `getnamed` 直接访问；需使用 `::model::FDTD`。`express_mode` 不可读（`::model::FDTD` 无此属性）。
   - **Mesh**：`::model::mesh` 存在但 `mesh accuracy` 属性不可读。
   - 未运行求解、未修改模板、未保存 `.fsp`、未创建 real job。
+
+## 2026-06-19 - Template Contract Stage B0.1 证据修正
+
+- 目标：修正 Stage B0 probe 错误证据判断，补齐 FDTD/mesh/CPU/boundary 只读，增加 stage_b1_ready。
+- 修正：select/selected get API; prepare_lumapi_environment; 三态对象分类; _read_fixed_object_property; canonical ::model::FDTD; 分离 global/override mesh; source_markers 证据; evaluate_stage_b1_readiness。
+- 离线验证：244 passed, compileall PASS, 禁止操作扫描 PASS。
+- Windows probe: 待执行。stage_b1_ready 不是 real approval。

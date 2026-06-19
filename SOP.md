@@ -167,15 +167,17 @@ Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict 
 5. 不提交 runtime inventory/contract JSON。
 6. 不在此阶段修改 RPC guard 或启动真实 sweep。
 
-## SOP-011 - Stage B0 定向模板探针
-
-在 inventory 审核后、编写 strict profile 之前，运行一次定向只读探针：
+## SOP-011 - Stage B0.x 模板只读探针工作流
 
 ```text
-inventory review → probe → review probe → Stage B1 strict profile
+Stage A inventory
+→ Stage B0 discovery probe
+→ Stage B0.1 evidence correction probe
+→ review stage_b1_ready
+→ Stage B1 strict profile
 ```
 
-1. 推送 Stage B0 代码到 origin/main。
+1. 推送代码到 origin/main。
 2. Windows `git pull --ff-only`。
 3. 运行 `scripts\windows\probe_metasurface_template.bat`。
 4. 审核 `base_model.probe.json`：
