@@ -42,3 +42,4 @@ Dephasing.svg
 # Metasurface template inspection runtime artifacts
 templates/metasurface/base_model.inventory.json
 templates/metasurface/base_model.contract.json
+templates/metasurface/base_model.probe.json
