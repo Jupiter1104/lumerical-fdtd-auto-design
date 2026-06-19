@@ -162,3 +162,21 @@ def test_real_preflight_rejects_without_plan_approval_and_does_not_call_rpc():
     assert packet["ok"] is False
     assert packet["error"]["type"] == "plan_approval_required"
     assert rpc.calls == []
+
+
+def test_production_preflight_is_local_only_and_does_not_call_rpc():
+    from tests.test_production_sweep_design import valid_c2_review
+    from tests.test_template_contract import valid_b1_contract
+
+    tools, rpc = registered_tools()
+
+    packet = tools["fdtd_simulation_plan_production_preflight"](
+        c2_review=valid_c2_review(),
+        template_contract=valid_b1_contract(),
+    )
+
+    assert packet["ok"] is True
+    assert packet["stage"] == "C3"
+    assert packet["status"] == "ready_for_human_approval"
+    assert packet["task_count"] == 25
+    assert rpc.calls == []
