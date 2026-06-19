@@ -271,3 +271,287 @@ def validate_inspection_profile(profile: dict) -> dict:
     _require_equal(profile["results"], REQUIRED_RESULTS, "results")
     _require_physics_review_warning(profile)
     return profile
+
+
+# ============================================================
+# Stage B1: Contract generation
+# ============================================================
+
+CONTRACT_VERSION = "0.1"
+
+
+def contract_fingerprint(contract: dict) -> str:
+    payload = dict(contract)
+    payload.pop("contract_fingerprint", None)
+    return hashlib.sha256(stable_json(payload).encode("utf-8")).hexdigest()
+
+
+def _read_probe_property(probe: dict, key: str):
+    return (
+        probe.get("fdtd_configuration", {})
+        .get("properties", {})
+        .get(key, {})
+        .get("value")
+    )
+
+
+def _check(name: str, passed: bool, *, expected=None, actual=None) -> tuple:
+    return name, {
+        "status": "pass" if passed else "fail",
+        "expected": expected,
+        "actual": actual,
+    }
+
+
+def _values_match(actual, expected) -> bool:
+    if actual == expected:
+        return True
+    if actual is None:
+        return False
+    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
+        return float(actual) == float(expected)
+    return False
+
+
+def _candidate_material(probe: dict, role: str, path: str):
+    candidates = (
+        probe.get("role_candidates", {})
+        .get("structure", {})
+        .get(role, {})
+        .get("candidates", [])
+    )
+    for candidate in candidates:
+        if candidate.get("path") != path or not candidate.get("exists"):
+            continue
+        return (
+            candidate.get("properties", {})
+            .get("material", {})
+            .get("value")
+        )
+    return None
+
+
+def _monitor_paths(probe: dict) -> set:
+    return {
+        item.get("path")
+        for item in probe.get("monitors", [])
+        if isinstance(item, dict)
+    }
+
+
+def generate_template_contract(profile: dict, probe: dict) -> dict:
+    validate_inspection_profile(profile)
+    paths = profile["canonical_paths"]
+    checks = {}
+
+    name, item = _check(
+        "template_sha",
+        probe.get("template", {}).get("sha256")
+        == profile["template"]["sha256"],
+        expected=profile["template"]["sha256"],
+        actual=probe.get("template", {}).get("sha256"),
+    )
+    checks[name] = item
+
+    name, item = _check(
+        "probe_status",
+        probe.get("status") == "probe"
+        and probe.get("stage_b1_ready") is True,
+        expected={"status": "probe", "stage_b1_ready": True},
+        actual={
+            "status": probe.get("status"),
+            "stage_b1_ready": probe.get("stage_b1_ready"),
+        },
+    )
+    checks[name] = item
+
+    name, item = _check(
+        "probe_errors",
+        probe.get("errors") == [],
+        expected=[],
+        actual=probe.get("errors"),
+    )
+    checks[name] = item
+
+    actual_fdtd_path = probe.get("fdtd_configuration", {}).get(
+        "canonical_path"
+    )
+    name, item = _check(
+        "canonical_fdtd_path",
+        actual_fdtd_path == paths["fdtd"],
+        expected=paths["fdtd"],
+        actual=actual_fdtd_path,
+    )
+    checks[name] = item
+
+    for prop_name, expected in (
+        ("dimension", profile["fdtd"]["dimension"]),
+        ("express_mode", profile["fdtd"]["express_mode"]),
+        ("mesh_accuracy", profile["fdtd"]["mesh_accuracy"]),
+        ("simulation_time", profile["fdtd"]["simulation_time"]),
+    ):
+        actual = _read_probe_property(probe, prop_name)
+        checks[prop_name] = _check(
+            prop_name,
+            _values_match(actual, expected),
+            expected=expected,
+            actual=actual,
+        )[1]
+
+    actual_cpu = (
+        probe.get("fdtd_configuration", {})
+        .get("cpu_express_mode_evidence", {})
+        .get("cpu_confirmed")
+    )
+    checks["cpu_confirmed"] = _check(
+        "cpu_confirmed",
+        actual_cpu is True,
+        expected=True,
+        actual=actual_cpu,
+    )[1]
+
+    actual_boundaries = {
+        key: _read_probe_property(probe, key)
+        for key in REQUIRED_BOUNDARY_CONDITIONS
+    }
+    checks["boundary_conditions"] = _check(
+        "boundary_conditions",
+        actual_boundaries == profile["fdtd"]["boundary_conditions"],
+        expected=profile["fdtd"]["boundary_conditions"],
+        actual=actual_boundaries,
+    )[1]
+
+    for role in ("pillar", "substrate"):
+        actual = _candidate_material(probe, role, paths[role])
+        checks[f"{role}_material"] = _check(
+            f"{role}_material",
+            actual == profile["materials"][role],
+            expected=profile["materials"][role],
+            actual=actual,
+        )[1]
+
+    actual_source_paths = {
+        item.get("path")
+        for item in (
+            probe.get("source_strategy", {})
+            .get("evidence", {})
+            .get("source_objects_found", [])
+        )
+    }
+    checks["source"] = _check(
+        "source",
+        probe.get("source_strategy", {}).get("classification")
+        == "explicit_object"
+        and paths["source"] in actual_source_paths,
+        expected=paths["source"],
+        actual=sorted(path for path in actual_source_paths if path),
+    )[1]
+
+    expected_monitors = {
+        paths["field_monitor"],
+        paths["transmission_monitor"],
+        paths["reflection_monitor"],
+        paths["transmission_index_monitor"],
+        paths["reflection_index_monitor"],
+    }
+    actual_monitors = _monitor_paths(probe)
+    checks["monitors"] = _check(
+        "monitors",
+        expected_monitors.issubset(actual_monitors),
+        expected=sorted(expected_monitors),
+        actual=sorted(path for path in actual_monitors if path),
+    )[1]
+
+    ag = probe.get("analysis_group", {}).get(
+        paths["analysis_group"], {}
+    )
+    result_names = ag.get("result_naming_assumptions", {})
+    checks["analysis_group"] = _check(
+        "analysis_group",
+        ag.get("exists") is True
+        and result_names.get("transmission", {}).get("assumed_name")
+        == profile["results"]["transmission"]
+        and result_names.get("s_parameter", {}).get("assumed_name")
+        == profile["results"]["s_parameter"],
+        expected={
+            "path": paths["analysis_group"],
+            "results": profile["results"],
+        },
+        actual={"exists": ag.get("exists"), "results": result_names},
+    )[1]
+
+    actual_params = {
+        key: probe.get("model_parameters", {}).get(key, {}).get("value")
+        for key in REQUIRED_MODEL_PARAMETERS
+    }
+    checks["model_parameters"] = _check(
+        "model_parameters",
+        actual_params == profile["model_parameters"],
+        expected=profile["model_parameters"],
+        actual=actual_params,
+    )[1]
+
+    verified = all(item["status"] == "pass" for item in checks.values())
+    contract = {
+        "contract_version": CONTRACT_VERSION,
+        "status": "verified" if verified else "unverified",
+        "verified": verified,
+        "contract_fingerprint": "",
+        "profile_fingerprint": inspection_profile_fingerprint(profile),
+        "probe_fingerprint": probe.get("probe_fingerprint"),
+        "template": profile["template"],
+        "installation": {
+            "path_version_tag": probe.get("installation", {}).get(
+                "path_version_tag"
+            ),
+            "recorded_version": probe.get("installation", {}).get(
+                "recorded_version"
+            ),
+            "confirmable": probe.get("installation", {}).get("confirmable"),
+        },
+        "code_commit": probe.get("inspector", {}).get("code_commit"),
+        "checks": checks,
+        "warnings": profile["warnings"]
+        + [
+            item
+            for item in probe.get("warnings", [])
+            if item.get("type") == "version_unknown_warning"
+        ],
+    }
+    contract["contract_fingerprint"] = contract_fingerprint(contract)
+    return contract
+
+
+# ============================================================
+# Stage B1: Contract validation
+# ============================================================
+
+
+def validate_template_contract(contract: dict) -> dict:
+    errors = []
+    if not isinstance(contract, dict):
+        return {"ok": False, "errors": ["contract_not_object"]}
+    if contract.get("contract_version") != CONTRACT_VERSION:
+        errors.append("unsupported_contract_version")
+    if (
+        contract.get("status") != "verified"
+        or contract.get("verified") is not True
+    ):
+        errors.append("contract_not_verified")
+    expected_fingerprint = contract_fingerprint(contract)
+    if contract.get("contract_fingerprint") != expected_fingerprint:
+        errors.append("contract_fingerprint_mismatch")
+    checks = contract.get("checks", {})
+    if not isinstance(checks, dict):
+        errors.append("checks_not_object")
+    else:
+        failed = [
+            name
+            for name, item in checks.items()
+            if not isinstance(item, dict) or item.get("status") != "pass"
+        ]
+        if failed:
+            errors.append(
+                "contract_checks_failed:" + ",".join(sorted(failed))
+            )
+    return {"ok": not errors, "errors": errors}

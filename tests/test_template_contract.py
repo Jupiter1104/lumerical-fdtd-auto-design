@@ -241,3 +241,341 @@ def test_repository_inspection_profile_matches_schema():
     )
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     assert validate_inspection_profile(profile) == profile
+
+
+# ============================================================
+# Stage B1: Contract generation tests (Task B1-3)
+# ============================================================
+
+
+def valid_b01_probe():
+    return {
+        "probe_version": "0.1",
+        "probe_only": True,
+        "status": "probe",
+        "probe_fingerprint": (
+            "a8e7e2ee4265f607012c54b85e29a01"
+            "f55ede9220cb37b12033be6f471c017d6"
+        ),
+        "template": {
+            "logical_path": "templates/metasurface/base_model.fsp",
+            "sha256": (
+                "03ba1f3ea9db6e86caa9c5458bcf84b6"
+                "adb92db6c0664e60f262e2f5edde0176"
+            ),
+        },
+        "installation": {
+            "confirmable": True,
+            "path_version_tag": "v242",
+            "recorded_version": "unknown",
+        },
+        "inspector": {
+            "code_commit": "bff39a0",
+            "cleanup_state": "closed",
+        },
+        "fdtd_configuration": {
+            "canonical_path": "::model::FDTD",
+            "properties": {
+                "dimension": {"status": "readable", "value": "3D"},
+                "express_mode": {"status": "readable", "value": 0.0},
+                "mesh_accuracy": {"status": "readable", "value": 6.0},
+                "simulation_time": {"status": "readable", "value": 5e-11},
+                "x_min_bc": {"status": "readable", "value": "Anti-Symmetric"},
+                "x_max_bc": {"status": "readable", "value": "Anti-Symmetric"},
+                "y_min_bc": {"status": "readable", "value": "Symmetric"},
+                "y_max_bc": {"status": "readable", "value": "Symmetric"},
+                "z_min_bc": {"status": "readable", "value": "PML"},
+                "z_max_bc": {"status": "readable", "value": "PML"},
+            },
+            "cpu_express_mode_evidence": {
+                "express_mode_value": 0.0,
+                "cpu_confirmed": True,
+                "evidence_source": "getnamed",
+            },
+        },
+        "role_candidates": {
+            "structure": {
+                "pillar": {
+                    "candidates": [
+                        {
+                            "path": "::model::pillar",
+                            "exists": True,
+                            "properties": {
+                                "type": {"value": "Circle"},
+                                "material": {
+                                    "value": (
+                                        "Si3N4 (Silicon Nitride) - Kischkat"
+                                    )
+                                },
+                            },
+                        }
+                    ]
+                },
+                "substrate": {
+                    "candidates": [
+                        {
+                            "path": "::model::substrate",
+                            "exists": True,
+                            "properties": {
+                                "type": {"value": "Rectangle"},
+                                "material": {
+                                    "value": "SiO2 (Glass) - Palik"
+                                },
+                            },
+                        }
+                    ]
+                },
+            }
+        },
+        "mesh_configuration": {
+            "global_mesh_accuracy_source": "::model::FDTD",
+            "overrides": [{"path": "::model::mesh", "exists": True}],
+        },
+        "source_strategy": {
+            "classification": "explicit_object",
+            "evidence": {
+                "source_objects_found": [
+                    {
+                        "path": "::model::s_params::source",
+                        "type": "planesource",
+                    }
+                ]
+            },
+        },
+        "monitors": [
+            {"path": "::model::field"},
+            {"path": "::model::s_params::T"},
+            {"path": "::model::s_params::R"},
+            {"path": "::model::s_params::T_index"},
+            {"path": "::model::s_params::R_index"},
+        ],
+        "analysis_group": {
+            "::model::s_params": {
+                "exists": True,
+                "result_naming_assumptions": {
+                    "transmission": {"assumed_name": "T"},
+                    "s_parameter": {"assumed_name": "S21_Gn"},
+                },
+            }
+        },
+        "model_parameters": {
+            "ratio": {"value": 0.8},
+            "height": {"value": 7e-7},
+            "period": {"value": 4.7e-7},
+        },
+        "warnings": [
+            {"type": "version_unknown_warning"},
+        ],
+        "errors": [],
+        "stage_b1_ready": True,
+        "stage_b1_blockers": [],
+    }
+
+
+def test_generate_template_contract_returns_verified_contract():
+    from src.template_contract import (
+        contract_fingerprint,
+        generate_template_contract,
+    )
+
+    contract = generate_template_contract(
+        valid_inspection_profile(),
+        valid_b01_probe(),
+    )
+
+    assert contract["contract_version"] == "0.1"
+    assert contract["status"] == "verified"
+    assert contract["verified"] is True
+    assert contract["contract_fingerprint"] == contract_fingerprint(contract)
+    assert (
+        contract["template"]["sha256"]
+        == valid_inspection_profile()["template"]["sha256"]
+    )
+    assert contract["checks"]["express_mode"]["status"] == "pass"
+    assert contract["checks"]["cpu_confirmed"]["status"] == "pass"
+    assert contract["warnings"][0]["type"] == "physics_review_required"
+
+
+@pytest.mark.parametrize(
+    "mutation,failed_check",
+    [
+        (
+            lambda p: p["template"].update({"sha256": "bad"}),
+            "template_sha",
+        ),
+        (
+            lambda p: p["fdtd_configuration"].update(
+                {"canonical_path": "FDTD"}
+            ),
+            "canonical_fdtd_path",
+        ),
+        (
+            lambda p: p["fdtd_configuration"]["properties"][
+                "express_mode"
+            ].update({"value": 1}),
+            "express_mode",
+        ),
+        (
+            lambda p: p["fdtd_configuration"][
+                "cpu_express_mode_evidence"
+            ].update({"cpu_confirmed": False}),
+            "cpu_confirmed",
+        ),
+        (
+            lambda p: p["source_strategy"].update(
+                {"classification": "unresolved"}
+            ),
+            "source",
+        ),
+        (
+            lambda p: p["monitors"].pop(),
+            "monitors",
+        ),
+        (
+            lambda p: p["fdtd_configuration"]["properties"].pop("x_min_bc"),
+            "boundary_conditions",
+        ),
+        (
+            lambda p: p.update({"errors": [{"type": "probe_error"}]}),
+            "probe_errors",
+        ),
+    ],
+)
+def test_generate_template_contract_fails_closed(mutation, failed_check):
+    from src.template_contract import generate_template_contract
+
+    probe = valid_b01_probe()
+    mutation(probe)
+    contract = generate_template_contract(valid_inspection_profile(), probe)
+
+    assert contract["status"] == "unverified"
+    assert contract["verified"] is False
+    assert contract["checks"][failed_check]["status"] == "fail"
+
+
+# ============================================================
+# Stage B1: Contract validation tests (Task B1-4)
+# ============================================================
+
+
+def test_validate_template_contract_accepts_verified_contract():
+    from src.template_contract import (
+        generate_template_contract,
+        validate_template_contract,
+    )
+
+    contract = generate_template_contract(
+        valid_inspection_profile(),
+        valid_b01_probe(),
+    )
+
+    assert validate_template_contract(contract) == {
+        "ok": True,
+        "errors": [],
+    }
+
+
+def test_validate_template_contract_rejects_tampered_fingerprint():
+    from src.template_contract import (
+        generate_template_contract,
+        validate_template_contract,
+    )
+
+    contract = generate_template_contract(
+        valid_inspection_profile(),
+        valid_b01_probe(),
+    )
+    contract["checks"]["express_mode"]["actual"] = 1
+
+    result = validate_template_contract(contract)
+
+    assert result["ok"] is False
+    assert "contract_fingerprint_mismatch" in result["errors"]
+
+
+def test_validate_template_contract_rejects_unverified_status():
+    from src.template_contract import validate_template_contract
+
+    contract = {
+        "contract_version": "0.1",
+        "status": "unverified",
+        "verified": False,
+        "contract_fingerprint": "not-a-real-fingerprint",
+        "checks": {"template_sha": {"status": "fail"}},
+    }
+
+    result = validate_template_contract(contract)
+
+    assert result["ok"] is False
+    assert "contract_not_verified" in result["errors"]
+
+
+# ============================================================
+# Stage B1: CLI tests (Task B1-5)
+# ============================================================
+
+
+def test_generate_template_contract_cli_writes_verified_contract(tmp_path):
+    import subprocess
+    import sys
+
+    profile_path = tmp_path / "profile.json"
+    probe_path = tmp_path / "probe.json"
+    output_path = tmp_path / "contract.json"
+    atomic_write_json(profile_path, valid_inspection_profile())
+    atomic_write_json(probe_path, valid_b01_probe())
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "generate_template_contract.py"),
+            "--profile",
+            str(profile_path),
+            "--probe",
+            str(probe_path),
+            "--output",
+            str(output_path),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    contract = json.loads(output_path.read_text(encoding="utf-8"))
+    assert contract["status"] == "verified"
+
+
+def test_generate_template_contract_cli_nonzero_for_unverified(tmp_path):
+    import subprocess
+    import sys
+
+    profile_path = tmp_path / "profile.json"
+    probe_path = tmp_path / "probe.json"
+    output_path = tmp_path / "contract.json"
+    probe = valid_b01_probe()
+    probe["fdtd_configuration"]["properties"]["express_mode"]["value"] = 1
+    atomic_write_json(profile_path, valid_inspection_profile())
+    atomic_write_json(probe_path, probe)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "generate_template_contract.py"),
+            "--profile",
+            str(profile_path),
+            "--probe",
+            str(probe_path),
+            "--output",
+            str(output_path),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    contract = json.loads(output_path.read_text(encoding="utf-8"))
+    assert contract["status"] == "unverified"
