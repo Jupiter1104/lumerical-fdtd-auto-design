@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fdtd": {
+      "command": "python",
+      "args": ["-m", "src.server"],
+      "cwd": "/Users/jupiter/AI agent/Codex workspace/projects/2026-06-17-lumerical-fdtd-auto-design",
+      "env": {
+        "FDTD_RPC_URL": "http://localhost:5000"
+      }
+    }
+  }
+}
