@@ -266,3 +266,160 @@ def import_lumapi():
     if candidate.is_dir() and str(candidate) not in sys.path:
         sys.path.append(str(candidate))
     return importlib.import_module("lumapi")
+
+
+def _failure_inventory(
+    *,
+    template: Path,
+    error_type: str,
+    message: str,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+    cleanup_state: str,
+) -> dict:
+    inventory = {
+        "inventory_version": INVENTORY_VERSION,
+        "inventory_only": True,
+        "status": "inventory_failed",
+        "inventory_fingerprint": "",
+        "template": {
+            "logical_path": "templates/metasurface/base_model.fsp",
+            "absolute_path": str(template.resolve()),
+        },
+        "inspector": {
+            "checked_at": utc_now(),
+            "hostname": hostname,
+            "python_executable": python_executable,
+            "lumerical_version": "unknown",
+            "code_commit": code_commit,
+            "hide": True,
+            "cleanup_state": cleanup_state,
+        },
+        "known_object_checks": [],
+        "roles_to_discover": [],
+        "objects": [],
+        "errors": [{"type": error_type, "message": message}],
+    }
+    inventory["inventory_fingerprint"] = inventory_fingerprint(inventory)
+    return inventory
+
+
+def run_inventory(
+    *,
+    template: Path,
+    profile_path: Path,
+    output: Path,
+    fdtd_factory,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+) -> int:
+    if not template.is_file():
+        atomic_write_json(
+            output,
+            _failure_inventory(
+                template=template,
+                error_type="template_not_found",
+                message=f"Template not found: {template}",
+                hostname=hostname,
+                python_executable=python_executable,
+                code_commit=code_commit,
+                cleanup_state="not_started",
+            ),
+        )
+        return 1
+
+    try:
+        profile = validate_inventory_profile(
+            json.loads(profile_path.read_text(encoding="utf-8"))
+        )
+    except Exception as exc:
+        atomic_write_json(
+            output,
+            _failure_inventory(
+                template=template,
+                error_type="profile_validation_error",
+                message=str(exc),
+                hostname=hostname,
+                python_executable=python_executable,
+                code_commit=code_commit,
+                cleanup_state="not_started",
+            ),
+        )
+        return 1
+
+    fdtd = None
+    adapter = None
+    inventory = None
+    try:
+        fdtd = fdtd_factory(True)
+        adapter = ReadOnlyFdtdAdapter(fdtd)
+        adapter.load(str(template.resolve()))
+        inventory = build_inventory(
+            adapter,
+            template=template,
+            profile=profile,
+            logical_path=profile["template_logical_path"],
+            hostname=hostname,
+            python_executable=python_executable,
+            code_commit=code_commit,
+        )
+    except Exception as exc:
+        inventory = _failure_inventory(
+            template=template,
+            error_type="template_open_failed",
+            message=str(exc),
+            hostname=hostname,
+            python_executable=python_executable,
+            code_commit=code_commit,
+            cleanup_state="pending" if fdtd is not None else "not_started",
+        )
+    finally:
+        if adapter is not None:
+            try:
+                adapter.close()
+                inventory["inspector"]["cleanup_state"] = "closed"
+            except Exception as exc:
+                inventory["inspector"]["cleanup_state"] = "close_failed"
+                inventory.setdefault("warnings", []).append(
+                    {"type": "cleanup_failed", "message": str(exc)}
+                )
+        inventory["inventory_fingerprint"] = inventory_fingerprint(inventory)
+        atomic_write_json(output, inventory)
+
+    return 0 if inventory["status"] == "inventory" else 1
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Read-only inventory for the metasurface FDTD template."
+    )
+    parser.add_argument("--inventory", action="store_true")
+    parser.add_argument("--template", default=str(DEFAULT_TEMPLATE))
+    parser.add_argument("--profile", default=str(DEFAULT_PROFILE))
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    if not args.inventory:
+        print("Only --inventory is available in Stage A.", file=sys.stderr)
+        return 2
+    lumapi = import_lumapi()
+    code = run_inventory(
+        template=Path(args.template),
+        profile_path=Path(args.profile),
+        output=Path(args.output),
+        fdtd_factory=lambda hide: lumapi.FDTD(hide=hide),
+        hostname=socket.gethostname(),
+        python_executable=sys.executable,
+        code_commit=current_commit(),
+    )
+    print(f"Inventory: {args.output}")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

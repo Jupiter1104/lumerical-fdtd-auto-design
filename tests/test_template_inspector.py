@@ -260,3 +260,63 @@ def test_build_inventory_records_property_read_errors(tmp_path):
         error["type"] == "property_unreadable"
         for error in inventory["errors"]
     )
+
+
+def test_run_inventory_writes_atomic_json_and_closes(tmp_path):
+    module = load_inspector_module()
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(inventory_profile()),
+        encoding="utf-8",
+    )
+    output = tmp_path / "inventory.json"
+    fdtd = FakeFdtd()
+
+    result = module.run_inventory(
+        template=template,
+        profile_path=profile_path,
+        output=output,
+        fdtd_factory=lambda hide: fdtd,
+        hostname="win-test",
+        python_executable="python.exe",
+        code_commit="abc123",
+    )
+
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert result == 0
+    assert saved["status"] == "inventory"
+    assert saved["inspector"]["cleanup_state"] == "closed"
+    assert ("close",) in fdtd.calls
+
+
+def test_run_inventory_writes_failure_json_when_open_fails(tmp_path):
+    module = load_inspector_module()
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        json.dumps(inventory_profile()),
+        encoding="utf-8",
+    )
+    output = tmp_path / "inventory.json"
+
+    class BrokenFdtd(FakeFdtd):
+        def load(self, path):
+            raise RuntimeError("cannot open template")
+
+    result = module.run_inventory(
+        template=template,
+        profile_path=profile_path,
+        output=output,
+        fdtd_factory=lambda hide: BrokenFdtd(),
+        hostname="win-test",
+        python_executable="python.exe",
+        code_commit="abc123",
+    )
+
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert result == 1
+    assert saved["status"] == "inventory_failed"
+    assert saved["errors"][0]["type"] == "template_open_failed"
