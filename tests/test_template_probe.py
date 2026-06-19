@@ -140,7 +140,7 @@ class FakeProbeFdtd:
     """Simulates raw v242 lumapi FDTD session for probe testing.
 
     Supported: load, close, groupscope, selectall, getnumber, get, getnamed,
-               getnamednumber, getversion, eval (restricted), getv.
+               getnamednumber, getversion, eval (restricted), getv, select.
 
     Forbidden and NOT implemented: save, run, runjobs, runanalysis, set,
     setnamed, delete, addrect, addcircle, add*, putv, importdataset.
@@ -151,6 +151,7 @@ class FakeProbeFdtd:
         self._scenario = scenario
         self._scope = "::"
         self._selected = []
+        self._selected_name = None
         self._loaded = False
         self._variables = {}
         self._objects = self._build_tree()
@@ -190,11 +191,22 @@ class FakeProbeFdtd:
             ],
             "::model": [
                 ("FDTD", "FDTD", {
-                    "dimension": "3D", "mesh accuracy": 3,
-                    "x min bc": "PML", "x max bc": "PML",
-                    "y min bc": "periodic", "y max bc": "periodic",
-                    "z min bc": "PML", "z max bc": "PML",
+                    "express mode": 0,
+                    "dimension": "3D",
+                    "mesh accuracy": 3,
                     "simulation time": 5e-12,
+                    "x min bc": "PML",
+                    "x max bc": "PML",
+                    "y min bc": "Periodic",
+                    "y max bc": "Periodic",
+                    "z min bc": "PML",
+                    "z max bc": "PML",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 4.13e-7,
+                    "x span": 4.7e-7,
+                    "y span": 4.7e-7,
+                    "z span": 1.38e-6,
                 }),
                 ("substrate", "Rectangle", {
                     "material": "SiO2 (Glass) - Palik",
@@ -207,7 +219,21 @@ class FakeProbeFdtd:
                     "x span": 0.2e-6, "y span": 0.2e-6, "z span": 0.7e-6,
                     "radius": 0.1e-6,
                 }),
-                ("mesh", "Mesh", {}),
+                ("mesh", "Mesh", {
+                    "based on a structure": 0,
+                    "override x mesh": 1,
+                    "override y mesh": 1,
+                    "override z mesh": 1,
+                    "dx": 5e-9,
+                    "dy": 5e-9,
+                    "dz": 5e-9,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 3.5e-7,
+                    "x span": 4.7e-7,
+                    "y span": 4.7e-7,
+                    "z span": 7e-7,
+                }),
                 ("field", "DFTMonitor", {
                     "monitor type": "2D Z-normal",
                     "x": 0, "y": 0, "z": 0.7e-6,
@@ -234,9 +260,57 @@ class FakeProbeFdtd:
             for entry in tree["::"]:
                 if entry[0] == "pillar":
                     entry[2].pop("radius", None)
+        elif self._scenario == "solver_getnamed_unreadable":
+            pass  # handled in getnamed()
+        elif self._scenario == "express_mode_one":
+            for entry in tree["::model"]:
+                if entry[0] == "FDTD":
+                    entry[2]["express mode"] = 1
+        elif self._scenario in ("source_script_evidence",):
+            pass  # handled in _build_scripts
+        elif self._scenario == "source_unresolved":
+            pass  # scripts have no source markers
         return tree
 
     def _build_scripts(self):
+        if self._scenario == "source_script_evidence":
+            return {
+                "::model::s_params": {
+                    "setup script": (
+                        "# setup script with source creation\n"
+                        "addplane;\n"
+                        "set('wavelength start', 700e-9);\n"
+                        "set('injection axis', 'z');\n"
+                    ),
+                    "analysis script": (
+                        "# analysis script\n"
+                        "T = transmission('monitor');\n"
+                        "S = getresult('monitor', 'S');\n"
+                    ),
+                },
+                "::s_params": {
+                    "setup script": "",
+                    "analysis script": "",
+                },
+            }
+        elif self._scenario == "source_unresolved":
+            return {
+                "::model::s_params": {
+                    "setup script": (
+                        "# generic setup\n"
+                        "select('::model');\n"
+                        "set('ratio', 0.5);\n"
+                    ),
+                    "analysis script": (
+                        "# analysis script without source markers\n"
+                        "runanalysis;\n"
+                    ),
+                },
+                "::s_params": {
+                    "setup script": "",
+                    "analysis script": "",
+                },
+            }
         return {
             "::model::s_params": {
                 "setup script": (
@@ -303,21 +377,55 @@ class FakeProbeFdtd:
         self.calls.append(("selectall",))
         self._selected = list(self._objects.get(self._scope, []))
 
+    def select(self, name):
+        self.calls.append(("select", name))
+        matches = [
+            entry
+            for entry in self._objects.get(self._scope, [])
+            if entry[0] == name
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"Expected one object named {name!r} in {self._scope}, "
+                f"found {len(matches)}"
+            )
+        self._selected_name = name
+
     def getnumber(self):
         self.calls.append(("getnumber",))
         return len(self._selected)
 
-    def get(self, prop, index):
+    def get(self, prop, index=None):
         self.calls.append(("get", prop, index))
-        name, obj_type, props = self._selected[index - 1]
+        if index is not None:
+            name, obj_type, props = self._selected[index - 1]
+        else:
+            matches = [
+                entry
+                for entry in self._objects.get(self._scope, [])
+                if entry[0] == self._selected_name
+            ]
+            if len(matches) != 1:
+                raise RuntimeError("No uniquely selected object")
+            name, obj_type, props = matches[0]
         if prop == "name":
             return name
-        elif prop == "type":
+        if prop == "type":
             return obj_type
-        return props.get(prop, "")
+        if prop in props:
+            return props[prop]
+        raise RuntimeError(
+            f"Property {prop!r} not found on "
+            f"{self._scope}::{name}"
+        )
 
     def getnamed(self, path, prop):
         self.calls.append(("getnamed", path, prop))
+        if (
+            self._scenario == "solver_getnamed_unreadable"
+            and path == "::model::FDTD"
+        ):
+            raise RuntimeError("Solver properties unavailable through getnamed")
         found = self._find(path)
 
         if found is not None:
@@ -405,6 +513,8 @@ def test_fake_probe_fdtd_allows_all_permitted_operations():
     fdtd.getnamed("FDTD", "dimension")
     fdtd.getnamednumber("FDTD")
     fdtd.groupscope("::model")
+    fdtd.select("FDTD")
+    assert fdtd.get("express mode") == 0
     fdtd.selectall()
     fdtd.eval("__x = 1+1;")
     fdtd.close()
@@ -419,6 +529,14 @@ def test_fake_probe_fdtd_eval_rejects_forbidden_scripts():
     ):
         with pytest.raises(RuntimeError, match="Forbidden"):
             fdtd.eval(forbidden_script)
+
+
+def test_fake_probe_fdtd_supports_fixed_selected_get():
+    fdtd = FakeProbeFdtd()
+    fdtd.groupscope("::model")
+    fdtd.select("FDTD")
+    assert fdtd.get("express mode") == 0
+    assert fdtd.get("x min bc") == "PML"
 
 
 # ============================================================
