@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "fdtd": {
-      "command": "python",
+      "command": "/Users/jupiter/AI agent/Codex workspace/projects/2026-06-17-lumerical-fdtd-auto-design/.venv/bin/python",
       "args": ["-m", "src.server"],
       "cwd": "/Users/jupiter/AI agent/Codex workspace/projects/2026-06-17-lumerical-fdtd-auto-design",
       "env": {
