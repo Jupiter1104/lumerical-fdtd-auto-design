@@ -573,3 +573,30 @@
     - `get_version()` 加 try-except 返回 "unknown"（commit `2734bdd`）。
     - `inventory_objects()` 改用原生 `groupscope/selectall/getnumber/get` 替代 `eval()`（commit `6a640f8`）。
   - 未运行求解、未修改模板、未保存 `.fsp`、未创建 real job。
+
+## 2026-06-19 - Template Contract Stage B0
+
+- 目标：定向只读探针，解决 Stage A 遗留的 4 个不确定问题。
+- 实现：
+  - 新增 `src/template_probe.py`：指纹、安装身份检测、版本可确认性验证。
+  - 新增 `scripts/probe_metasurface_template.py`：`ProbeAdapter`（18 个只读方法）、`build_probe`、`run_probe`、CLI。
+  - 新增 `scripts/windows/probe_metasurface_template.bat`：Windows 入口。
+  - 新增 `tests/test_template_probe.py`：`FakeProbeFdtd`（5 种场景）和 43 个测试。
+- 探针能力：
+  - 作用域枚举（`::`、`::model`、`::s_params`、`::model::s_params`）。
+  - 同名对象证据对比（root vs ::model，stable properties 比较）。
+  - 结构候选只读探测（pillar/substrate 的 material、坐标、span、radius）。
+  - FDTD 配置（dimension、express mode、boundary conditions、simulation time）。
+  - Mesh 配置（mesh accuracy）。
+  - Model 参数（ratio、height、period 真实值/类型/读取方法）。
+  - Source strategy 分类（explicit_object / analysis_group_setup / unresolved）。
+  - 脚本只读审计（SHA-256 + 字节数 + 摘要，不保存全文）。
+  - Monitors 枚举（坐标、span、frequency）。
+  - Analysis group 验证（路径、类型、result naming T/S/S21_Gn）。
+  - 安装身份（路径版本标签、lumapi SHA-256、可确认性）。
+- 离线验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`232 passed`。
+  - 禁止操作扫描：`scripts/probe_metasurface_template.py` 无匹配。
+  - Git tracked-artifact 扫描：`base_model.probe.json` 不在跟踪中。
+- Windows probe：尚未执行；等待推送和 Windows 同步。

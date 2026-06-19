@@ -166,3 +166,28 @@ Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict 
 4. 根据真实 inventory 编写 strict contract profile（进入 Stage B）。
 5. 不提交 runtime inventory/contract JSON。
 6. 不在此阶段修改 RPC guard 或启动真实 sweep。
+
+## SOP-011 - Stage B0 定向模板探针
+
+在 inventory 审核后、编写 strict profile 之前，运行一次定向只读探针：
+
+```text
+inventory review → probe → review probe → Stage B1 strict profile
+```
+
+1. 推送 Stage B0 代码到 origin/main。
+2. Windows `git pull --ff-only`。
+3. 运行 `scripts\windows\probe_metasurface_template.bat`。
+4. 审核 `base_model.probe.json`：
+   - `probe_only=true`、`status=probe`。
+   - 安装身份可确认（路径版本标签、lumapi SHA-256）。
+   - 对象身份证据（root 与 ::model 同名对象对比结论）。
+   - source strategy 分类明确。
+   - 结构候选属性完整（含 material、坐标、span）。
+   - FDTD 配置可读（dimension、boundary conditions、mesh accuracy）。
+   - model 参数可读（ratio、height、period 真实值/类型）。
+   - monitors 和分析组验证通过。
+   - `cleanup_state=closed`。
+5. 不提交 runtime probe JSON。
+6. 停在 Stage B0 checkpoint，不进入 Stage B1。
+7. 不在此阶段创建 strict profile、contract 或启动真实 sweep。

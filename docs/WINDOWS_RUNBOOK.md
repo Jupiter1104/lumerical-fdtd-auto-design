@@ -97,6 +97,29 @@ type templates\metasurface\base_model.inventory.json
 
 Inventory 仅用于发现对象，不能批准真实运行。
 
+## 模板定向只读探针 (Stage B0)
+
+Inventory 审核后，运行定向探针解决遗留不确定性：
+
+```cmd
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+git pull --ff-only
+scripts\windows\probe_metasurface_template.bat
+type templates\metasurface\base_model.probe.json
+```
+
+成功标准：
+
+- `probe_only=true`、`status=probe`
+- 安装身份可确认（`confirmable=true`，路径版本标签可读）
+- 对象身份证据完整（同名对象对比结论）
+- source strategy 分类明确
+- 结构候选属性、FDTD 配置、model 参数完整
+- `cleanup_state=closed`
+- 未创建真实 job
+
+探针输出不能授权真实运行。
+
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。

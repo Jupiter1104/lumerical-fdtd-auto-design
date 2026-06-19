@@ -43,3 +43,17 @@ scripts\windows\inspect_metasurface_template.bat
 This opens the template with `hide=True` using Lumerical v242 Python and writes
 `base_model.inventory.json`. It must not solve, modify, or save the `.fsp`.
 Inventory is discovery evidence only and cannot authorize a real run.
+
+## Targeted read-only probe (Stage B0)
+
+After inventory review, run the targeted probe to resolve object identity,
+source strategy, and verify real property names:
+
+```cmd
+scripts\windows\probe_metasurface_template.bat
+```
+
+This writes `base_model.probe.json` (git-ignored). The probe must not solve,
+modify, or save the `.fsp`. Probe output cannot authorize a real run.
+
+See `SOP-011` for the full Stage B0 workflow.
