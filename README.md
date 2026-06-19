@@ -17,7 +17,7 @@
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
-- 当前 checkpoint：Stage B1 strict template profile 生成 contract。生成 `templates/metasurface/base_model.contract.json` 后才可申请真实 2×2 SimulationPlan 审批。B1 不启动真实 FDTD。
+- 当前 checkpoint：Stage C0 real 2×2 SimulationPlan preflight。C0 builds `runtime/approvals/real_2x2_preflight.json` from the verified Stage B1 contract. C0 does not start real FDTD. The generated packet must be approved separately before Stage C1.
 
 ## 核心文档
 

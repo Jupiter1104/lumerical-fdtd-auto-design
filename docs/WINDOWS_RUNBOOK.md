@@ -133,6 +133,20 @@ Expected result:
 
 This command reads JSON evidence only. It must not open Lumerical, mutate `.fsp`, or create jobs.
 
+## Build Stage C0 real 2x2 approval packet
+
+From `F:\lumerical-fdtd-auto-design\fdtd-auto-design`:
+
+    git pull
+    scripts\windows\build_real_run_preflight_packet.bat
+
+Expected:
+
+    real_2x2_preflight status=ready_for_human_approval ...
+
+This command reads JSON evidence and writes `runtime\approvals\real_2x2_preflight.json`.
+It must not start RPC real mode or run FDTD.
+
 ## 当前已知状态（2026-06-18）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。

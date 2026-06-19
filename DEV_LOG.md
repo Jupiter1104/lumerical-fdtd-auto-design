@@ -661,3 +661,11 @@
 - No solve, no .fsp mutation, no job creation, no real sweep.
 - Stage B1 complete. Stopped before real 2x2 SimulationPlan approval.
 
+
+## 2026-06-19 - Planned Stage C0 real 2x2 preflight
+
+- Goal: build an approval packet for the first real 2x2 SimulationPlan run.
+- Safety: C0 is local JSON validation only; no FDTD solve, no real job, no RPC start.
+- Important fix: real-run guard must accept verified Stage B1 contract shape.
+- Stop gate: user must approve the exact generated packet before Stage C1.
+

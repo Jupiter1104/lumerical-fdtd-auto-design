@@ -176,6 +176,15 @@ Stage A 在 inventory 审核后停止。不得在 inventory 阶段创建 strict 
 5. Do not start a real SimulationPlan job in Stage B1.
 6. Report contract fingerprint and stop for separate real-run approval.
 
+## SOP-012 - Real 2×2 SimulationPlan preflight
+
+1. Confirm Stage B1 contract exists on Windows: `templates\metasurface\base_model.contract.json`.
+2. Run `scripts\windows\build_real_run_preflight_packet.bat`.
+3. Confirm output contains `status=ready_for_human_approval`.
+4. Inspect `runtime\approvals\real_2x2_preflight.json`.
+5. Report plan fingerprint, template SHA, contract fingerprint, task count, resource, express mode, mesh accuracy, and warnings.
+6. Stop. Do not call `fdtd_simulation_plan_start(mode="real")` until the human approves this exact packet.
+
 ## SOP-011 - Stage B0.x 模板只读探针工作流
 
 ```text
