@@ -149,3 +149,91 @@ def validate_probe_installation(identity: dict):
             }
         )
     return False, warnings
+
+
+# ============================================================
+# Lumapi environment preparation
+# ============================================================
+
+_DLL_DIRECTORY_HANDLES = {}
+
+
+def derive_version_root(python_executable) -> Path:
+    executable = Path(python_executable).resolve()
+    if executable.parent.name.lower() == "python":
+        return executable.parent.parent
+    return executable.parent
+
+
+def prepare_lumapi_environment(
+    *,
+    version_root=None,
+    python_executable=None,
+    sys_path=None,
+    environ=None,
+    platform_name=None,
+    add_dll_directory=None,
+) -> dict:
+    import sys
+
+    sys_path = sys.path if sys_path is None else sys_path
+    environ = os.environ if environ is None else environ
+    platform_name = sys.platform if platform_name is None else platform_name
+    python_executable = (
+        sys.executable if python_executable is None else python_executable
+    )
+    root = (
+        derive_version_root(python_executable)
+        if version_root is None
+        else Path(version_root).resolve()
+    )
+    api_python = root / "api" / "python"
+    bin_path = root / "bin"
+    diagnostics = {
+        "version_root": str(root),
+        "api_python_path": str(api_python),
+        "bin_path": str(bin_path),
+        "api_python_exists": api_python.is_dir(),
+        "bin_exists": bin_path.is_dir(),
+        "sys_path_added": False,
+        "path_added": False,
+        "dll_directory_added": False,
+        "errors": [],
+    }
+
+    if api_python.is_dir():
+        api_text = str(api_python)
+        if api_text not in sys_path:
+            sys_path.append(api_text)
+            diagnostics["sys_path_added"] = True
+    else:
+        diagnostics["errors"].append({
+            "type": "api_python_missing",
+            "path": str(api_python),
+        })
+
+    if bin_path.is_dir():
+        bin_text = str(bin_path)
+        path_parts = [
+            item for item in environ.get("PATH", "").split(os.pathsep)
+            if item
+        ]
+        if bin_text not in path_parts:
+            environ["PATH"] = os.pathsep.join([bin_text, *path_parts])
+            diagnostics["path_added"] = True
+        if platform_name.startswith("win"):
+            dll_adder = (
+                getattr(os, "add_dll_directory", None)
+                if add_dll_directory is None
+                else add_dll_directory
+            )
+            if dll_adder is not None and bin_text not in _DLL_DIRECTORY_HANDLES:
+                _DLL_DIRECTORY_HANDLES[bin_text] = dll_adder(bin_text)
+                diagnostics["dll_directory_added"] = True
+    else:
+        diagnostics["errors"].append({
+            "type": "bin_missing",
+            "path": str(bin_path),
+        })
+
+    return diagnostics

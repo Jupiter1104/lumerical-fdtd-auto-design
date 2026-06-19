@@ -893,15 +893,25 @@ def test_missing_analysis_group_returns_exists_false():
 
 
 def _mock_lumapi_factory():
-    """Return a MockLumapiModule with a fake but valid file path."""
+    """Return (MockLumapiModule, empty_env_diagnostics) for probe tests."""
     import tempfile
     import os as _os
     f = tempfile.NamedTemporaryFile(suffix=".py", delete=False)
     f.write(b"# mock lumapi\n")
     f.close()
     mock = MockLumapiModule(f.name, with_file=True)
-    # Clean up on module destruction
-    return mock
+    diagnostics = {
+        "version_root": "/fake/v242",
+        "api_python_path": "/fake/v242/api/python",
+        "bin_path": "/fake/v242/bin",
+        "api_python_exists": True,
+        "bin_exists": True,
+        "sys_path_added": False,
+        "path_added": False,
+        "dll_directory_added": False,
+        "errors": [],
+    }
+    return mock, diagnostics
 
 
 def test_cleanup_executes_and_records_closed(tmp_path):
@@ -1093,3 +1103,83 @@ def test_probe_never_calls_save_run_set_add_delete(tmp_path):
     }
     for name in forbidden:
         assert name not in call_names, f"Forbidden call '{name}' was made"
+
+
+# ============================================================
+# Lumapi environment preparation tests (Task B0.1-2)
+# ============================================================
+
+
+import os as _os_module
+
+
+def test_prepare_lumapi_environment_adds_api_and_bin_paths(tmp_path, monkeypatch):
+    from src.template_probe import prepare_lumapi_environment
+
+    version_root = tmp_path / "v242"
+    api_python = version_root / "api" / "python"
+    bin_path = version_root / "bin"
+    api_python.mkdir(parents=True)
+    bin_path.mkdir()
+
+    fake_sys_path = []
+    monkeypatch.setenv("PATH", "existing")
+    diagnostics = prepare_lumapi_environment(
+        version_root=version_root,
+        sys_path=fake_sys_path,
+        environ=_os_module.environ,
+        platform_name="win32",
+        add_dll_directory=lambda path: object(),
+    )
+
+    assert fake_sys_path == [str(api_python)]
+    assert _os_module.environ["PATH"].split(_os_module.pathsep)[0] == str(bin_path)
+    assert diagnostics["api_python_path"] == str(api_python)
+    assert diagnostics["bin_path"] == str(bin_path)
+    assert diagnostics["dll_directory_added"] is True
+    assert diagnostics["errors"] == []
+
+
+def test_prepare_lumapi_environment_does_not_duplicate(tmp_path, monkeypatch):
+    from src.template_probe import prepare_lumapi_environment
+
+    version_root = tmp_path / "v242"
+    (version_root / "api" / "python").mkdir(parents=True)
+    (version_root / "bin").mkdir()
+
+    fake_sys_path = []
+    first = prepare_lumapi_environment(
+        version_root=version_root,
+        sys_path=fake_sys_path,
+        environ=_os_module.environ,
+        platform_name="win32",
+        add_dll_directory=lambda path: object(),
+    )
+    assert first["sys_path_added"] is True
+    second = prepare_lumapi_environment(
+        version_root=version_root,
+        sys_path=fake_sys_path,
+        environ=_os_module.environ,
+        platform_name="win32",
+        add_dll_directory=lambda path: object(),
+    )
+    assert second["sys_path_added"] is False
+    assert second["path_added"] is False
+    assert second["dll_directory_added"] is False
+
+
+def test_prepare_lumapi_environment_missing_paths_records_errors(tmp_path):
+    from src.template_probe import prepare_lumapi_environment
+
+    version_root = tmp_path / "nonexistent"
+    fake_sys_path = []
+    diagnostics = prepare_lumapi_environment(
+        version_root=version_root,
+        sys_path=fake_sys_path,
+        environ=_os_module.environ,
+        platform_name="win32",
+        add_dll_directory=lambda path: object(),
+    )
+    assert diagnostics["api_python_exists"] is False
+    assert diagnostics["bin_exists"] is False
+    assert len(diagnostics["errors"]) >= 2

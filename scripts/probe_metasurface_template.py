@@ -558,12 +558,9 @@ def _summarize_script(text: str) -> str:
 
 
 def import_lumapi():
-    candidate = (
-        Path(sys.executable).resolve().parent.parent / "api" / "python"
-    )
-    if candidate.is_dir() and str(candidate) not in sys.path:
-        sys.path.append(str(candidate))
-    return importlib.import_module("lumapi")
+    diagnostics = prepare_lumapi_environment()
+    module = importlib.import_module("lumapi")
+    return module, diagnostics
 
 
 # ================================================================
@@ -624,6 +621,7 @@ def build_probe(
     python_executable: str,
     code_commit: str,
     lumapi_module=None,
+    env_diagnostics=None,
 ) -> dict:
     """Assemble complete probe JSON from all sub-probes."""
     errors = []
@@ -645,6 +643,9 @@ def build_probe(
     if lumapi_module is None:
         lumapi_module = import_lumapi()
     install_id = probe_installation_identity(lumapi_module)
+    install_id["environment_preparation"] = (
+        env_diagnostics if env_diagnostics else {}
+    )
     fail_install, install_warnings = validate_probe_installation(install_id)
     warnings.extend(install_warnings)
     if fail_install:
@@ -807,13 +808,18 @@ def run_probe(
         fdtd = fdtd_factory(True)
         adapter = ProbeAdapter(fdtd)
         adapter.load(str(template.resolve()))
+        lumapi_module = None
+        env_diagnostics = None
+        if lumapi_factory:
+            lumapi_module, env_diagnostics = lumapi_factory()
         probe = build_probe(
             adapter,
             template=template,
             hostname=hostname,
             python_executable=python_executable,
             code_commit=code_commit,
-            lumapi_module=lumapi_factory() if lumapi_factory else None,
+            lumapi_module=lumapi_module,
+            env_diagnostics=env_diagnostics,
         )
     except Exception as exc:
         probe = _failure_probe(
@@ -864,7 +870,7 @@ def main(argv=None) -> int:
     code = run_probe(
         template=Path(args.template),
         output=Path(args.output),
-        fdtd_factory=lambda hide: import_lumapi().FDTD(hide=hide),
+        fdtd_factory=lambda hide: import_lumapi()[0].FDTD(hide=hide),
         hostname=socket.gethostname(),
         python_executable=sys.executable,
         code_commit=current_commit(),
