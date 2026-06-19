@@ -479,13 +479,18 @@ def generate_template_contract(profile: dict, probe: dict) -> dict:
         actual={"exists": ag.get("exists"), "results": result_names},
     )[1]
 
-    actual_params = {
-        key: probe.get("model_parameters", {}).get(key, {}).get("value")
-        for key in REQUIRED_MODEL_PARAMETERS
-    }
+    all_params_match = True
+    actual_params = {}
+    for key in REQUIRED_MODEL_PARAMETERS:
+        actual_val = (
+            probe.get("model_parameters", {}).get(key, {}).get("value")
+        )
+        actual_params[key] = actual_val
+        if not _values_match(actual_val, profile["model_parameters"][key]):
+            all_params_match = False
     checks["model_parameters"] = _check(
         "model_parameters",
-        actual_params == profile["model_parameters"],
+        all_params_match,
         expected=profile["model_parameters"],
         actual=actual_params,
     )[1]
