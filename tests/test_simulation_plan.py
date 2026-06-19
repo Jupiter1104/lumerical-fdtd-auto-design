@@ -233,6 +233,74 @@ def test_minimal_valid_plan_still_passes():
     assert result["plan_fingerprint"]
 
 
+def test_period_axis_rejects_height_fields():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "period",
+                "ratio_values": [0.2, 0.8],
+                "period_values_m": [390e-9, 540e-9],
+                "fixed_height_m": 700e-9,
+                "height_values_m": [600e-9, 800e-9],
+                "fixed_period_m": 470e-9,
+            }
+        }
+    )
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    paths = {item["path"] for item in result["error"]["details"]["invalid_fields"]}
+    assert paths == {"sweep.height_values_m", "sweep.fixed_period_m"}
+
+
+def test_height_axis_rejects_period_fields():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "height",
+                "ratio_values": [0.3],
+                "height_values_m": [600e-9, 800e-9],
+                "fixed_period_m": 470e-9,
+                "period_values_m": [390e-9, 540e-9],
+                "fixed_height_m": 700e-9,
+            }
+        }
+    )
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    paths = {item["path"] for item in result["error"]["details"]["invalid_fields"]}
+    assert paths == {"sweep.period_values_m", "sweep.fixed_height_m"}
+
+
+def test_valid_period_plan_with_period_fields_passes():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "period",
+                "ratio_values": [0.2, 0.8],
+                "period_values_m": [390e-9, 540e-9],
+                "fixed_height_m": 700e-9,
+            }
+        }
+    )
+    assert result["ok"] is True
+    assert result["task_count"] == 4
+
+
+def test_valid_height_plan_with_height_fields_passes():
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "height",
+                "ratio_values": [0.2, 0.8],
+                "height_values_m": [600e-9, 800e-9],
+                "fixed_period_m": 470e-9,
+            }
+        }
+    )
+    assert result["ok"] is True
+    assert result["task_count"] == 4
+
+
 from src.simulation_plan import (
     approve_simulation_plan,
     validate_execution_approvals,

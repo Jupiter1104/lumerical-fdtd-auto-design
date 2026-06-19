@@ -531,3 +531,13 @@
 - 验证：
   - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
   - `.venv/bin/python -m pytest -q`：`164 passed`。
+
+## 2026-06-19 - sweep axis 字段互斥校验
+
+- 目标：axis=period 时拒绝 height_values_m/fixed_period_m；axis=height 时拒绝 period_values_m/fixed_height_m。
+- 修改：
+  - `src/simulation_plan.py`：新增 `PERIOD_ONLY_FIELDS`/`HEIGHT_ONLY_FIELDS` 集合及 `_validate_sweep_axis_fields()`，在 `validate_simulation_plan` 中于 normalize 前检查输入 sweep 的 axis 与冲突字段。
+  - `tests/test_simulation_plan.py`：新增 4 个测试 — period 冲突拒绝、height 冲突拒绝、合法 period 回归、合法 height 回归。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`168 passed`。

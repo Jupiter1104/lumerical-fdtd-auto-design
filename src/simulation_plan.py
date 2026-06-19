@@ -547,6 +547,34 @@ def _validate_input_structure(plan: dict) -> dict | None:
     return None
 
 
+PERIOD_ONLY_FIELDS = {"period_values_m", "fixed_height_m"}
+HEIGHT_ONLY_FIELDS = {"height_values_m", "fixed_period_m"}
+
+
+def _validate_sweep_axis_fields(plan: dict) -> dict | None:
+    """Reject sweep fields that conflict with the declared axis."""
+    sweep_in = plan.get("sweep")
+    if not isinstance(sweep_in, dict):
+        return None
+    axis = sweep_in.get("axis", "period")
+    if axis not in {"period", "height"}:
+        return None
+
+    conflicting = PERIOD_ONLY_FIELDS if axis == "height" else HEIGHT_ONLY_FIELDS
+    invalid = [
+        {"path": f"sweep.{key}", "message": f"sweep.{key} is not valid when axis={axis}."}
+        for key in sorted(conflicting)
+        if key in sweep_in
+    ]
+    if invalid:
+        return _error(
+            "plan_validation_error",
+            f"Sweep axis={axis} conflicts with fields meant for the other axis.",
+            {"invalid_fields": invalid},
+        )
+    return None
+
+
 def validate_simulation_plan(plan: dict) -> dict:
     if not isinstance(plan, dict):
         return {
@@ -561,6 +589,10 @@ def validate_simulation_plan(plan: dict) -> dict:
     input_error = _validate_input_structure(plan)
     if input_error:
         return input_error
+
+    axis_error = _validate_sweep_axis_fields(plan)
+    if axis_error:
+        return axis_error
 
     normalized, defaults_applied = _normalize(plan)
 
