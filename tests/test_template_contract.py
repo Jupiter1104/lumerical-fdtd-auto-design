@@ -80,6 +80,31 @@ def test_inventory_profile_rejects_invalid_values(mutation):
         validate_inventory_profile(profile)
 
 
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_repository_inventory_profile_matches_schema():
+    profile_path = (
+        ROOT
+        / "templates"
+        / "metasurface"
+        / "template-inventory-profile.json"
+    )
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    assert validate_inventory_profile(profile) == profile
+
+
+def test_runtime_inventory_and_contract_are_ignored():
+    ignore_text = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert "templates/metasurface/base_model.inventory.json" in ignore_text
+    assert "templates/metasurface/base_model.contract.json" in ignore_text
+
+
 def test_inventory_fingerprint_excludes_its_own_field():
     inventory = {
         "inventory_version": "0.1",

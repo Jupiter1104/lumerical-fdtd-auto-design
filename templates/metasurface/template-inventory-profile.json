@@ -1,0 +1,16 @@
+{
+  "profile_version": "0.1",
+  "mode": "inventory",
+  "template_logical_path": "templates/metasurface/base_model.fsp",
+  "known_objects": {
+    "fdtd": "FDTD",
+    "model": "::model",
+    "analysis_group": "::model::s_params"
+  },
+  "roles_to_discover": [
+    "pillar",
+    "substrate",
+    "source",
+    "monitors"
+  ]
+}

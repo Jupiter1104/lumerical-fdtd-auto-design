@@ -38,3 +38,7 @@ Dephasing.svg
 
 # MCP runtime
 .claude/
+
+# Metasurface template inspection runtime artifacts
+templates/metasurface/base_model.inventory.json
+templates/metasurface/base_model.contract.json
