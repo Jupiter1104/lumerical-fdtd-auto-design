@@ -556,3 +556,20 @@
   - `.venv/bin/python -m pytest -q`：`189 passed`。
   - 禁止操作扫描：无匹配。
   - Git tracked-artifact 扫描：无 runtime inventory/contract 或 `.fsp` 文件被跟踪。
+- Windows inventory（`6a640f8`，LAPTOP-OR14JLNC）：
+  - 状态：`status=inventory`，`inventory_only=true`，`errors=[]`。
+  - 模板 SHA-256：`03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176`。
+  - inventory fingerprint：`d3b37899e2b753c9fb2b93981f9c3026d0f69243858ac8ea7abb918379f3d1f2`。
+  - known objects 全部 `count=1`、`status=pass`。
+  - objects：12 个（root 6 + ::model 6）。
+  - cleanup_state：`closed`。
+  - ⚠️ `lumerical_version=unknown`：raw v242 lumapi `eval()` 不可用，`getversion` 无 Python 映射；此行为与 RPC Server 一致（PITFALLS.md 已记录）。
+  - role 候选：
+    - pillar：`::pillar`（Circle）或 `::model::pillar`（Circle）
+    - substrate：`::substrate`（Rectangle）或 `::model::substrate`（Rectangle）
+    - source：对象树中无独立 source 对象；可能嵌入 FDTD 设置
+    - monitors：`::field`（DFTMonitor）和/或 `::model::field`（DFTMonitor）
+  - v242 兼容性修复：
+    - `get_version()` 加 try-except 返回 "unknown"（commit `2734bdd`）。
+    - `inventory_objects()` 改用原生 `groupscope/selectall/getnumber/get` 替代 `eval()`（commit `6a640f8`）。
+  - 未运行求解、未修改模板、未保存 `.fsp`、未创建 real job。
