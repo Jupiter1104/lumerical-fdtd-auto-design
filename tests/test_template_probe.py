@@ -327,6 +327,10 @@ class FakeProbeFdtd:
             if prop == "type":
                 return obj_type
 
+            # Name property
+            if prop == "name":
+                return _name
+
             # Regular properties
             if prop in props:
                 if (self._scenario == "unreadable_properties"
@@ -504,3 +508,126 @@ def test_identically_named_objects_with_different_properties_concluded_independe
     evidence = adapter.probe_identically_named_objects()
     pillar_ev = [e for e in evidence if e["name"] == "pillar"]
     assert pillar_ev[0]["conclusion"] == "independent_objects"
+
+
+# ============================================================
+# Structure & material candidate tests (Task B0-5)
+# ============================================================
+
+
+def test_structure_candidates_read_pillar_properties():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_structure_candidates({
+        "pillar": ["::pillar", "::model::pillar"],
+        "substrate": ["::substrate", "::model::substrate"],
+    })
+    assert result["pillar"]["candidate_count"] == 2
+    for c in result["pillar"]["candidates"]:
+        assert c["exists"] is True
+        props = c["properties"]
+        assert "material" in props
+        assert "x" in props
+        assert "radius" in props
+        assert props["material"] in ("TiO2 - Palik",)
+    assert not result["pillar"]["has_unreadable"]
+
+
+def test_structure_candidates_read_substrate_properties():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_structure_candidates({
+        "substrate": ["::substrate", "::model::substrate"],
+    })
+    assert result["substrate"]["candidate_count"] == 2
+    for c in result["substrate"]["candidates"]:
+        props = c["properties"]
+        assert "material" in props
+        assert "z" in props
+        assert "z span" in props
+
+
+def test_unreadable_properties_produce_structured_diagnostics():
+    module = load_probe_module()
+    fdtd = FakeProbeFdtd(scenario="unreadable_properties")
+    adapter = module.ProbeAdapter(fdtd)
+    result = adapter.probe_structure_candidates({
+        "pillar": ["::pillar"],
+    })
+    assert result["pillar"]["has_unreadable"] is True
+    # radius should be unreadable in this scenario
+    pillar_props = result["pillar"]["candidates"][0]["properties"]
+    radius = pillar_props.get("radius", {})
+    assert isinstance(radius, dict) and radius.get("status") == "unreadable"
+
+
+def test_structure_candidates_handle_missing_object_path():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    result = adapter.probe_structure_candidates({
+        "pillar": ["::nonexistent"],
+    })
+    assert result["pillar"]["candidate_count"] == 0
+
+
+# ============================================================
+# FDTD, mesh, and model parameter probe tests (Task B0-6)
+# ============================================================
+
+
+def test_fdtd_configuration_reads_dimension_express_mode():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    config = adapter.probe_fdtd_configuration()
+    assert config["path"] == "FDTD"
+    props = config["properties"]
+    assert props.get("dimension") == "3D"
+    # express_mode not set in baseline FakeProbeFdtd, may be unreadable
+    assert "dimension" in props
+
+
+def test_fdtd_configuration_cpu_express_mode_evidence():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    config = adapter.probe_fdtd_configuration()
+    # CPU express mode evidence should be present even if express_mode unreadable
+    assert "cpu_express_mode_evidence" in config
+
+
+def test_mesh_configuration_reads_mesh_accuracy():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    config = adapter.probe_mesh_configuration()
+    assert len(config["meshes"]) >= 1
+    for mesh in config["meshes"]:
+        if mesh["exists"]:
+            assert "properties" in mesh
+
+
+def test_model_parameters_read_ratio_height_period():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    params = adapter.probe_model_parameters()
+    for key in ("ratio", "height", "period"):
+        assert key in params
+        p = params[key]
+        assert p.get("name") == key
+        assert p.get("path") == "::model"
+        assert p.get("read_method") == "getnamed"
+
+
+def test_unreadable_model_parameter_produces_diagnostic():
+    module = load_probe_module()
+    # Create FDTD where ::model doesn't have 'ratio' parameter
+    class NoRatioFdtd(FakeProbeFdtd):
+        def getnamed(self, path, prop):
+            if path == "::model" and prop == "ratio":
+                raise RuntimeError("Property 'ratio' not found")
+            return super().getnamed(path, prop)
+
+    adapter = module.ProbeAdapter(NoRatioFdtd())
+    params = adapter.probe_model_parameters()
+    assert params["ratio"].get("status") == "unreadable"
+    assert "error" in params["ratio"]
+    # Other params still readable
+    assert params["height"].get("value") is not None

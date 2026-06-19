@@ -205,6 +205,152 @@ class ProbeAdapter:
         return evidence
 
 
+    # --- Structure & material candidates ---
+
+    def probe_structure_candidates(self, role_paths: dict) -> dict:
+        """Read pillar and substrate candidate properties.
+
+        role_paths: {"pillar": ["::pillar", ...], "substrate": [...]}
+        """
+        PROPERTY_MAP = {
+            "pillar": [
+                "type", "name", "material",
+                "x", "y", "z",
+                "x span", "y span", "z span",
+                "radius",
+            ],
+            "substrate": [
+                "type", "name", "material",
+                "x", "y", "z",
+                "x span", "y span", "z span",
+            ],
+        }
+        results = {}
+        for role, paths in role_paths.items():
+            candidates = []
+            has_unreadable = False
+            for path in paths:
+                try:
+                    count = self._fdtd.getnamednumber(path)
+                except Exception:
+                    count = 0
+                if count == 0:
+                    continue
+                candidate = {"path": path, "exists": True, "properties": {}}
+                for prop in PROPERTY_MAP.get(role, []):
+                    try:
+                        candidate["properties"][prop] = _jsonable(
+                            self._fdtd.getnamed(path, prop)
+                        )
+                    except Exception as exc:
+                        candidate["properties"][prop] = {
+                            "status": "unreadable",
+                            "error": str(exc),
+                        }
+                        has_unreadable = True
+                candidates.append(candidate)
+            results[role] = {
+                "candidate_count": len(candidates),
+                "candidates": candidates,
+                "has_unreadable": has_unreadable,
+            }
+        return results
+
+    # --- FDTD configuration ---
+
+    def probe_fdtd_configuration(self, fdtd_path: str = "FDTD") -> dict:
+        """Read FDTD solver configuration without modifying."""
+        properties = {
+            "type": "type",
+            "dimension": "dimension",
+            "express_mode": "express mode",
+            "simulation_time": "simulation time",
+        }
+        result = {"path": fdtd_path, "properties": {}}
+        for key, prop_name in properties.items():
+            try:
+                result["properties"][key] = _jsonable(
+                    self._fdtd.getnamed(fdtd_path, prop_name)
+                )
+            except Exception as exc:
+                result["properties"][key] = {
+                    "status": "unreadable", "error": str(exc),
+                }
+        # Evidence-based CPU/express_mode check
+        em = result["properties"].get("express_mode", {})
+        if isinstance(em, (int, float)):
+            result["cpu_express_mode_evidence"] = {
+                "express_mode_value": int(em),
+                "cpu_confirmed": em == 0,
+                "note": (
+                    "express_mode=0 confirms CPU resource"
+                    if em == 0
+                    else f"express_mode={int(em)} unexpected for CPU (0)"
+                ),
+            }
+        else:
+            result["cpu_express_mode_evidence"] = {
+                "express_mode_value": None,
+                "cpu_confirmed": False,
+                "note": "express mode could not be read; CPU resource unconfirmed",
+            }
+        return result
+
+    # --- Mesh configuration ---
+
+    def probe_mesh_configuration(self, mesh_paths=None) -> dict:
+        """Read mesh accuracy from candidate mesh objects."""
+        if mesh_paths is None:
+            mesh_paths = ["::mesh", "::model::mesh"]
+        result = {"meshes": []}
+        for path in mesh_paths:
+            mesh_entry = {"path": path, "exists": False, "properties": {}}
+            try:
+                count = self._fdtd.getnamednumber(path)
+            except Exception:
+                count = 0
+            if count == 0:
+                result["meshes"].append(mesh_entry)
+                continue
+            mesh_entry["exists"] = True
+            for prop in ["mesh accuracy", "type"]:
+                try:
+                    mesh_entry["properties"][prop] = _jsonable(
+                        self._fdtd.getnamed(path, prop)
+                    )
+                except Exception as exc:
+                    mesh_entry["properties"][prop] = {
+                        "status": "unreadable", "error": str(exc),
+                    }
+            result["meshes"].append(mesh_entry)
+        return result
+
+    # --- Model parameters ---
+
+    def probe_model_parameters(self, model_path: str = "::model") -> dict:
+        """Read sweep-critical model parameters: ratio, height, period."""
+        params = {}
+        for param_name in ("ratio", "height", "period"):
+            try:
+                value = self._fdtd.getnamed(model_path, param_name)
+                params[param_name] = {
+                    "name": param_name,
+                    "value": _jsonable(value),
+                    "type": type(value).__name__,
+                    "read_method": "getnamed",
+                    "path": model_path,
+                }
+            except Exception as exc:
+                params[param_name] = {
+                    "name": param_name,
+                    "status": "unreadable",
+                    "error": str(exc),
+                    "read_method": "getnamed",
+                    "path": model_path,
+                }
+        return params
+
+
 def import_lumapi():
     candidate = (
         Path(sys.executable).resolve().parent.parent / "api" / "python"
