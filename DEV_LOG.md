@@ -551,3 +551,8 @@
   - 新增受控 inventory profile、只读 Lumerical adapter、inventory CLI 和 Windows `.bat` 入口。
   - runtime inventory/contract JSON 被 Git 忽略。
 - Windows inventory：尚未执行；等待离线验证和 Windows 同步。
+- 离线验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`189 passed`。
+  - 禁止操作扫描：无匹配。
+  - Git tracked-artifact 扫描：无 runtime inventory/contract 或 `.fsp` 文件被跟踪。
