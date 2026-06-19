@@ -1,6 +1,7 @@
 import importlib
 import sys
 import threading
+from unittest.mock import patch
 
 import pytest
 
@@ -330,3 +331,68 @@ def test_real_metasurface_sweep_rejects_missing_template(
 
     assert response.status_code == 400
     assert response.get_json()["error"]["type"] == "template_not_found"
+
+
+def test_real_sweep_background_exception_marks_job_failed(
+    server_module,
+    fake_session,
+    tmp_path,
+):
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    finished = threading.Event()
+
+    class FailingRunner:
+        def run(self, job_id):
+            try:
+                raise RuntimeError("runner exploded")
+            finally:
+                finished.set()
+
+    store = JobStore(
+        tmp_path / "jobs",
+        code_version="test-sha",
+    )
+    app = server_module.create_app(
+        fake_session,
+        job_store=store,
+        sweep_runner=FailingRunner(),
+    )
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    with patch("src.job_store.notify_job_state") as notify:
+        response = client.post(
+            "/jobs/start",
+            json={
+                "mode": "real",
+                "job_type": "metasurface-sweep",
+                "sweep": {
+                    "template": str(template),
+                    "config": {
+                        "RATIO_LIST": [0.2],
+                        "PERIOD_LIST": [390e-9],
+                    },
+                },
+                "approval": {
+                    "approved": True,
+                    "approved_for": "real_run",
+                },
+            },
+        )
+        job_id = response.get_json()["job_id"]
+        assert finished.wait(timeout=1)
+        for _ in range(50):
+            state = store.get(job_id)["state"]
+            if state == "failed":
+                break
+            threading.Event().wait(0.01)
+
+    assert response.status_code == 202
+    assert store.get(job_id)["state"] == "failed"
+    task = store.list_tasks(job_id)["tasks"][0]
+    assert task["error"]["type"] == "RuntimeError"
+    notify.assert_called_once_with(
+        tmp_path / "jobs" / job_id,
+        "failed",
+    )

@@ -421,8 +421,9 @@ def _job_executor(data: dict, session: SessionManager):
 
 
 class SweepCoordinator:
-    def __init__(self, runner):
+    def __init__(self, runner, job_store=None):
         self.runner = runner
+        self.job_store = job_store
         self._lock = threading.Lock()
         self._active_job_id = None
 
@@ -445,8 +446,12 @@ class SweepCoordinator:
         def worker():
             try:
                 self.runner.run(job_id)
-            except Exception:
-                logger.exception("Native sweep job failed: %s", job_id)
+            except Exception as exc:
+                logger.exception(
+                    "Native sweep job failed: %s", job_id
+                )
+                if self.job_store is not None:
+                    self.job_store.fail(job_id, exc)
             finally:
                 with self._lock:
                     self._active_job_id = None
@@ -505,7 +510,7 @@ def create_app(
     jobs = job_store or JobStore()
     jobs.recover_interrupted_jobs()
     runner = sweep_runner or NativeSweepRunner(session, jobs)
-    sweeps = SweepCoordinator(runner)
+    sweeps = SweepCoordinator(runner, jobs)
 
     def reject_during_sweep() -> None:
         if sweeps.is_running:
