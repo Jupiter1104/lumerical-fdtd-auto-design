@@ -323,11 +323,10 @@ def _candidate_material(probe: dict, role: str, path: str):
     for candidate in candidates:
         if candidate.get("path") != path or not candidate.get("exists"):
             continue
-        return (
-            candidate.get("properties", {})
-            .get("material", {})
-            .get("value")
-        )
+        material = candidate.get("properties", {}).get("material")
+        if isinstance(material, dict):
+            return material.get("value")
+        return material
     return None
 
 
