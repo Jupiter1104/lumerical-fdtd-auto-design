@@ -6,6 +6,8 @@ import json
 import math
 from typing import Any
 
+from .template_contract import template_contract_execution_summary
+
 
 SCHEMA_VERSION = "0.1"
 MAX_TASKS = 100
@@ -738,25 +740,27 @@ def validate_execution_approvals(
             "real_run_approval_required",
             "A matching real-run approval is required.",
         )
-    if not isinstance(template_contract, dict):
+    contract_summary = template_contract_execution_summary(template_contract)
+    if not contract_summary["ok"]:
         return _error(
             "template_contract_required",
             "A verified template contract is required for real mode.",
+            contract_summary.get("error", {}),
         )
 
     plan = validated_plan["normalized_plan"]
     execution = plan["execution"]
     contract_ok = (
-        template_contract.get("path") == execution["template"]
-        and template_contract.get("sha256")
+        contract_summary.get("path") == execution["template"]
+        and contract_summary.get("sha256")
         == real_run_approval.get("template_sha256")
-        and template_contract.get("resource") == "CPU"
-        and template_contract.get("express_mode") == 0
-        and template_contract.get("physics_strategy")
+        and contract_summary.get("resource") == "CPU"
+        and contract_summary.get("express_mode") == 0
+        and contract_summary.get("physics_strategy")
         == "template_inherited"
         and _requirements_match(
             plan["physics"]["requirements"],
-            template_contract.get("declared_physics", {}),
+            contract_summary.get("declared_physics", {}),
         )
     )
     if not contract_ok:

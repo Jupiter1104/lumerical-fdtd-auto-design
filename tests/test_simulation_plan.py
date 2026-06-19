@@ -444,3 +444,63 @@ def test_real_template_contract_must_match_physics_requirements():
 
     assert result["ok"] is False
     assert result["error"]["type"] == "template_contract_required"
+
+
+def _verified_b1_contract_for_simulation_plan_tests():
+    from tests.test_template_contract import valid_b1_contract
+
+    return valid_b1_contract()
+
+
+def test_real_approvals_accept_verified_b1_template_contract():
+    validated = validate_simulation_plan({})
+    fingerprint = validated["plan_fingerprint"]
+    plan_approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        fingerprint,
+    )["approval"]
+    contract = _verified_b1_contract_for_simulation_plan_tests()
+    real_approval = {
+        "approved": True,
+        "approved_for": "real_run",
+        "plan_fingerprint": fingerprint,
+        "template_sha256": contract["template"]["sha256"],
+    }
+
+    result = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+        real_run_approval=real_approval,
+        template_contract=contract,
+    )
+
+    assert result == {"ok": True}
+
+
+def test_real_approvals_reject_unverified_b1_template_contract():
+    validated = validate_simulation_plan({})
+    fingerprint = validated["plan_fingerprint"]
+    plan_approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        fingerprint,
+    )["approval"]
+    contract = _verified_b1_contract_for_simulation_plan_tests()
+    contract["verified"] = False
+    real_approval = {
+        "approved": True,
+        "approved_for": "real_run",
+        "plan_fingerprint": fingerprint,
+        "template_sha256": contract["template"]["sha256"],
+    }
+
+    result = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+        real_run_approval=real_approval,
+        template_contract=contract,
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "template_contract_required"
