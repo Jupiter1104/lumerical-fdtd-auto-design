@@ -28,6 +28,21 @@ class FakeFdtd:
             ("::model", "type"): "Structure Group",
             ("::model::s_params", "type"): "Analysis Group",
         }
+        self._scoped_objects = {
+            "::": [
+                ("FDTD", "FDTD"),
+                ("model", "Structure Group"),
+            ],
+            "::model": [
+                ("s_params", "Analysis Group"),
+                ("pillar", "Circle"),
+                ("substrate", "Rectangle"),
+                ("source", "Plane Wave"),
+                ("monitor", "Power Monitor"),
+            ],
+        }
+        self._scope = "::"
+        self._selected = []
 
     def load(self, path):
         self.calls.append(("load", path))
@@ -44,32 +59,32 @@ class FakeFdtd:
         self.calls.append(("getnamed", path, prop))
         return self.properties[(path, prop)]
 
+    def groupscope(self, scope):
+        self.calls.append(("groupscope", scope))
+        self._scope = scope
+
+    def selectall(self):
+        self.calls.append(("selectall",))
+        self._selected = list(self._scoped_objects.get(self._scope, []))
+
+    def getnumber(self):
+        self.calls.append(("getnumber",))
+        return len(self._selected)
+
+    def get(self, prop, index):
+        self.calls.append(("get", prop, index))
+        name, obj_type = self._selected[index - 1]
+        if prop == "name":
+            return name
+        elif prop == "type":
+            return obj_type
+        return ""
+
     def eval(self, script):
         self.calls.append(("eval", script))
 
     def getv(self, name):
         self.calls.append(("getv", name))
-        values = {
-            "__template_inventory_paths": [
-                "::FDTD",
-                "::model",
-                "::model::s_params",
-                "::model::pillar",
-                "::model::substrate",
-                "::model::source",
-                "::model::monitor",
-            ],
-            "__template_inventory_types": [
-                "FDTD",
-                "Structure Group",
-                "Analysis Group",
-                "Circle",
-                "Rectangle",
-                "Plane Wave",
-                "Power Monitor",
-            ],
-        }
-        return values[name]
 
     def close(self):
         self.calls.append(("close",))
@@ -118,8 +133,10 @@ def test_adapter_records_only_read_calls():
         "getversion",
         "getnamednumber",
         "getnamed",
-        "eval",
-        "getv",
+        "groupscope",
+        "selectall",
+        "getnumber",
+        "get",
         "close",
     }
 

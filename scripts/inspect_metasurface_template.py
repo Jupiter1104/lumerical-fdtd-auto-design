@@ -124,15 +124,19 @@ class ReadOnlyFdtdAdapter:
         return self._fdtd.getnamed(path, prop)
 
     def inventory_objects(self):
-        self._fdtd.eval(INVENTORY_SCRIPT)
-        paths = self._fdtd.getv("__template_inventory_paths")
-        types = self._fdtd.getv("__template_inventory_types")
-        path_values = paths.tolist() if hasattr(paths, "tolist") else list(paths)
-        type_values = types.tolist() if hasattr(types, "tolist") else list(types)
-        return [
-            {"path": str(path), "type": str(object_type)}
-            for path, object_type in zip(path_values, type_values)
-        ]
+        # Use native Python methods on raw v242 lumapi.
+        # eval() may raise LumApiError; native methods are preferred.
+        objects = []
+        for scope, prefix in [("::", "::"), ("::model", "::model::")]:
+            self._fdtd.groupscope(scope)
+            self._fdtd.selectall()
+            count = int(self._fdtd.getnumber())
+            for i in range(1, count + 1):
+                name = str(self._fdtd.get("name", i))
+                obj_type = str(self._fdtd.get("type", i))
+                objects.append({"path": prefix + name, "type": obj_type})
+        self._fdtd.groupscope("::")
+        return objects
 
     def close(self) -> None:
         self._fdtd.close()
