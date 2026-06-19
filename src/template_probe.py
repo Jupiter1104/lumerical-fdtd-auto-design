@@ -237,3 +237,72 @@ def prepare_lumapi_environment(
         })
 
     return diagnostics
+
+
+# ============================================================
+# Stage B1 readiness
+# ============================================================
+
+EXPECTED_TEMPLATE_SHA256 = (
+    "03ba1f3ea9db6e86caa9c5458bcf84b6"
+    "adb92db6c0664e60f262e2f5edde0176"
+)
+
+
+def _is_readable(properties, key):
+    return properties.get(key, {}).get("status") == "readable"
+
+
+def evaluate_stage_b1_readiness(
+    *,
+    template_sha_matches,
+    installation_confirmable,
+    fdtd_configuration,
+    resolved_roles,
+    model_parameters,
+    errors,
+) -> dict:
+    blockers = []
+    if not template_sha_matches:
+        blockers.append("template_sha_mismatch")
+    if not installation_confirmable:
+        blockers.append("installation_unconfirmable")
+    if fdtd_configuration.get("canonical_path") != "::model::FDTD":
+        blockers.append("canonical_fdtd_unconfirmed")
+
+    properties = fdtd_configuration.get("properties", {})
+    required_properties = (
+        "dimension",
+        "express_mode",
+        "mesh_accuracy",
+        "x_min_bc",
+        "x_max_bc",
+        "y_min_bc",
+        "y_max_bc",
+        "z_min_bc",
+        "z_max_bc",
+    )
+    for key in required_properties:
+        if not _is_readable(properties, key):
+            blockers.append(f"fdtd_property_unreadable:{key}")
+
+    if not fdtd_configuration.get(
+        "cpu_express_mode_evidence", {}
+    ).get("cpu_confirmed"):
+        blockers.append("cpu_express_mode_unconfirmed")
+
+    for role in (
+        "pillar", "substrate", "source",
+        "monitors", "analysis_group",
+    ):
+        if not resolved_roles.get(role):
+            blockers.append(f"role_unresolved:{role}")
+
+    for name in ("ratio", "height", "period"):
+        parameter = model_parameters.get(name, {})
+        if "value" not in parameter:
+            blockers.append(f"model_parameter_unreadable:{name}")
+
+    if errors:
+        blockers.append("probe_has_errors")
+    return {"ready": not blockers, "blockers": blockers}
