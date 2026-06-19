@@ -411,3 +411,96 @@ def test_fake_probe_fdtd_eval_rejects_forbidden_scripts():
     ):
         with pytest.raises(RuntimeError, match="Forbidden"):
             fdtd.eval(forbidden_script)
+
+
+# ============================================================
+# Scope & object identity tests (depend on ProbeAdapter)
+# ============================================================
+
+import importlib.util
+
+PROBE_SCRIPT = ROOT / "scripts" / "probe_metasurface_template.py"
+
+
+def load_probe_module():
+    """Load the probe script as a module for testing."""
+    spec = importlib.util.spec_from_file_location("probe_runner", PROBE_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _jsonable(value):
+    """Copy of the _jsonable helper used in probe adapter."""
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if hasattr(value, "tolist"):
+        return _jsonable(value.tolist())
+    return value
+
+
+def test_enumerate_scopes_discovers_all_four_scopes():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    scopes = adapter.enumerate_scopes([
+        "::", "::model", "::s_params", "::model::s_params",
+    ])
+    assert scopes["::"]["reachable"] is True
+    assert scopes["::"]["object_count"] >= 6
+    assert scopes["::model"]["reachable"] is True
+    assert scopes["::model"]["object_count"] >= 6
+    # ::s_params may or may not be reachable depending on analysis group setup
+    assert "::s_params" in scopes
+
+
+def test_enumerate_objects_recursive_returns_typed_objects():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    objects = adapter.enumerate_objects_recursive(["::", "::model"])
+    assert len(objects) >= 10
+    for obj in objects:
+        assert "path" in obj
+        assert "type" in obj
+        assert "scope" in obj
+        assert "name" in obj
+    # Verify key objects present
+    paths = {obj["path"] for obj in objects}
+    assert "::FDTD" in paths
+    assert "::model::pillar" in paths
+
+
+def test_identically_named_objects_same_name_different_scopes_produce_evidence():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    evidence = adapter.probe_identically_named_objects()
+    # pillar and substrate appear in both root and ::model
+    names_found = {e["name"] for e in evidence}
+    assert "pillar" in names_found
+    assert "substrate" in names_found
+
+
+def test_identically_named_objects_with_identical_properties_concluded_alias():
+    module = load_probe_module()
+    adapter = module.ProbeAdapter(FakeProbeFdtd())
+    evidence = adapter.probe_identically_named_objects()
+    # In baseline, pillar props are identical across root and ::model
+    pillar_ev = [e for e in evidence if e["name"] == "pillar"]
+    assert len(pillar_ev) == 1
+    # Since properties are identical, conclusion should be possible_alias_or_identical
+    assert pillar_ev[0]["conclusion"] == "possible_alias_or_identical"
+
+
+def test_identically_named_objects_with_different_properties_concluded_independent():
+    module = load_probe_module()
+    # Use a modified FakeProbeFdtd where root pillar has different props
+    fdtd = FakeProbeFdtd()
+    # Change root pillar material to differ from ::model::pillar
+    for entry in fdtd._objects["::"]:
+        if entry[0] == "pillar":
+            entry[2]["material"] = "Si (Silicon) - Palik"
+    adapter = module.ProbeAdapter(fdtd)
+    evidence = adapter.probe_identically_named_objects()
+    pillar_ev = [e for e in evidence if e["name"] == "pillar"]
+    assert pillar_ev[0]["conclusion"] == "independent_objects"
