@@ -579,3 +579,76 @@ def test_generate_template_contract_cli_nonzero_for_unverified(tmp_path):
     assert result.returncode == 2
     contract = json.loads(output_path.read_text(encoding="utf-8"))
     assert contract["status"] == "unverified"
+
+
+# ============================================================
+# Stage C0: Contract execution summary tests (Task C0-1)
+# ============================================================
+
+
+def valid_b1_contract():
+    from src.template_contract import generate_template_contract
+
+    return generate_template_contract(
+        valid_inspection_profile(),
+        valid_b01_probe(),
+    )
+
+
+def test_template_contract_execution_summary_accepts_verified_b1_contract():
+    from src.template_contract import template_contract_execution_summary
+
+    contract = valid_b1_contract()
+    summary = template_contract_execution_summary(contract)
+
+    assert summary == {
+        "ok": True,
+        "path": "templates/metasurface/base_model.fsp",
+        "sha256": (
+            "03ba1f3ea9db6e86caa9c5458bcf84b6"
+            "adb92db6c0664e60f262e2f5edde0176"
+        ),
+        "resource": "CPU",
+        "express_mode": 0,
+        "physics_strategy": "template_inherited",
+        "declared_physics": {},
+        "contract_fingerprint": contract["contract_fingerprint"],
+        "warnings": contract["warnings"],
+    }
+
+
+def test_template_contract_execution_summary_preserves_legacy_contract():
+    from src.template_contract import template_contract_execution_summary
+
+    legacy = {
+        "path": "templates/metasurface/base_model.fsp",
+        "sha256": "abc",
+        "resource": "CPU",
+        "express_mode": 0,
+        "physics_strategy": "template_inherited",
+        "declared_physics": {"wavelength_m": 810e-9},
+    }
+
+    assert template_contract_execution_summary(legacy) == {
+        "ok": True,
+        "path": "templates/metasurface/base_model.fsp",
+        "sha256": "abc",
+        "resource": "CPU",
+        "express_mode": 0,
+        "physics_strategy": "template_inherited",
+        "declared_physics": {"wavelength_m": 810e-9},
+        "contract_fingerprint": None,
+        "warnings": [],
+    }
+
+
+def test_template_contract_execution_summary_rejects_unverified_b1_contract():
+    from src.template_contract import template_contract_execution_summary
+
+    contract = valid_b1_contract()
+    contract["status"] = "unverified"
+
+    result = template_contract_execution_summary(contract)
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "template_contract_unverified"

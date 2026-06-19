@@ -559,3 +559,93 @@ def validate_template_contract(contract: dict) -> dict:
                 "contract_checks_failed:" + ",".join(sorted(failed))
             )
     return {"ok": not errors, "errors": errors}
+
+
+# ============================================================
+# Stage C0: Contract execution summary adapter
+# ============================================================
+
+
+def _contract_error(error_type: str, message: str, details=None) -> dict:
+    return {
+        "ok": False,
+        "error": {
+            "type": error_type,
+            "message": message,
+            "details": details or {},
+        },
+    }
+
+
+def _looks_like_legacy_execution_contract(contract: dict) -> bool:
+    return all(
+        key in contract
+        for key in (
+            "path",
+            "sha256",
+            "resource",
+            "express_mode",
+            "physics_strategy",
+            "declared_physics",
+        )
+    )
+
+
+def template_contract_execution_summary(contract: dict) -> dict:
+    """Return the flat execution contract required by SimulationPlan real mode.
+
+    Accepts both the old flat contract and the Stage B1 verified contract.
+    """
+    if not isinstance(contract, dict):
+        return _contract_error(
+            "template_contract_required",
+            "Template contract must be an object.",
+        )
+
+    if _looks_like_legacy_execution_contract(contract):
+        return {
+            "ok": True,
+            "path": contract["path"],
+            "sha256": contract["sha256"],
+            "resource": contract["resource"],
+            "express_mode": contract["express_mode"],
+            "physics_strategy": contract["physics_strategy"],
+            "declared_physics": dict(contract["declared_physics"]),
+            "contract_fingerprint": contract.get("contract_fingerprint"),
+            "warnings": list(contract.get("warnings", [])),
+        }
+
+    validation = validate_template_contract(contract)
+    if not validation["ok"]:
+        return _contract_error(
+            "template_contract_unverified",
+            "Stage B1 template contract is not verified.",
+            {"validation_errors": validation["errors"]},
+        )
+
+    checks = contract.get("checks", {})
+    express = checks.get("express_mode", {})
+    cpu = checks.get("cpu_confirmed", {})
+    if express.get("status") != "pass" or express.get("expected") != 0:
+        return _contract_error(
+            "template_contract_required",
+            "Verified contract does not prove express_mode=0.",
+        )
+    if cpu.get("status") != "pass":
+        return _contract_error(
+            "template_contract_required",
+            "Verified contract does not prove CPU execution.",
+        )
+
+    template = contract.get("template", {})
+    return {
+        "ok": True,
+        "path": template.get("logical_path"),
+        "sha256": template.get("sha256"),
+        "resource": "CPU",
+        "express_mode": 0,
+        "physics_strategy": "template_inherited",
+        "declared_physics": {},
+        "contract_fingerprint": contract.get("contract_fingerprint"),
+        "warnings": list(contract.get("warnings", [])),
+    }
