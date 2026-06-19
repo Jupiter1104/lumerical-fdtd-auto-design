@@ -277,3 +277,105 @@ def test_recover_interrupted_jobs_marks_running_state_retriable(tmp_path):
     assert tasks[0]["state"] == "succeeded"
     assert tasks[1]["state"] == "failed"
     assert tasks[1]["error"]["type"] == "interrupted"
+
+
+import hashlib
+
+
+def create_real_metasurface_job_with_template(store, tmp_path):
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"original-template")
+    job = store.enqueue(
+        {
+            "mode": "real",
+            "job_type": "metasurface-sweep",
+            "sweep": {
+                "template": str(template),
+                "config": {
+                    "RATIO_LIST": [0.2],
+                    "PERIOD_LIST": [390e-9],
+                },
+            },
+            "approval": {
+                "approved": True,
+                "approved_for": "real_run",
+            },
+        }
+    )
+    store.update_manifest(
+        job["job_id"],
+        {
+            "template": {
+                "path": str(template),
+                "sha256": hashlib.sha256(
+                    template.read_bytes()
+                ).hexdigest(),
+                "size_bytes": template.stat().st_size,
+                "modified_at": template.stat().st_mtime,
+            }
+        },
+    )
+    return job, template
+
+
+def test_real_metasurface_resume_allows_unchanged_template(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job, _ = create_real_metasurface_job_with_template(store, tmp_path)
+
+    resumed = store.resume(job["job_id"])
+
+    assert resumed["task_ids"] == ["task_0001"]
+
+
+def test_real_metasurface_resume_rejects_changed_template(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job, template = create_real_metasurface_job_with_template(store, tmp_path)
+    template.write_bytes(b"changed-template")
+
+    with pytest.raises(JobError) as error:
+        store.resume(job["job_id"])
+
+    assert error.value.error_type == "resume_conflict"
+    assert error.value.status_code == 409
+
+
+def test_real_metasurface_resume_rejects_missing_template(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job, template = create_real_metasurface_job_with_template(store, tmp_path)
+    template.unlink()
+
+    with pytest.raises(JobError) as error:
+        store.resume(job["job_id"])
+
+    assert error.value.error_type == "resume_conflict"
+
+
+def test_old_real_metasurface_job_without_fingerprint_cannot_resume(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    template = tmp_path / "base_model.fsp"
+    template.write_bytes(b"template")
+    job = store.enqueue(
+        {
+            "mode": "real",
+            "job_type": "metasurface-sweep",
+            "sweep": {"template": str(template)},
+            "approval": {
+                "approved": True,
+                "approved_for": "real_run",
+            },
+        }
+    )
+
+    with pytest.raises(JobError) as error:
+        store.resume(job["job_id"])
+
+    assert error.value.error_type == "resume_conflict"
+
+
+def test_mock_resume_does_not_require_template_fingerprint(tmp_path):
+    store = JobStore(tmp_path / "jobs", code_version="test-sha")
+    job = store.plan({"mode": "mock", "job_type": "metasurface-sweep"})
+
+    resumed = store.resume(job["job_id"])
+
+    assert len(resumed["task_ids"]) == 4

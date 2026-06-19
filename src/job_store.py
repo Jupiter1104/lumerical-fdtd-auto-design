@@ -128,11 +128,61 @@ class JobStore:
         self._write_json(manifest_path, manifest)
         return manifest
 
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _verify_resume_template(self, job_id: str) -> None:
+        job_dir = self._job_dir(job_id)
+        manifest = self._read_json(job_dir / "manifest.json")
+        if (
+            manifest.get("mode") != "real"
+            or manifest.get("job_type") != "metasurface-sweep"
+        ):
+            return
+
+        template_record = manifest.get("template") or {}
+        expected_sha = template_record.get("sha256")
+        request_data = self._read_json(job_dir / "inputs" / "request.json")
+        template_path = Path(request_data["sweep"]["template"])
+        if not expected_sha:
+            raise JobError(
+                "resume_conflict",
+                "Real metasurface job has no recorded template fingerprint.",
+                409,
+                {"job_id": job_id},
+            )
+        if not template_path.is_file():
+            raise JobError(
+                "resume_conflict",
+                "Sweep template is missing; create a new job.",
+                409,
+                {"job_id": job_id, "template": str(template_path)},
+            )
+        actual_sha = self._file_sha256(template_path)
+        if actual_sha != expected_sha:
+            raise JobError(
+                "resume_conflict",
+                "Sweep template changed; create a new job.",
+                409,
+                {
+                    "job_id": job_id,
+                    "template": str(template_path),
+                    "expected_sha256": expected_sha,
+                    "actual_sha256": actual_sha,
+                },
+            )
+
     def resume(
         self,
         job_id: str,
         executor: Optional[Callable[[dict, Path], dict]] = None,
     ) -> dict:
+        self._verify_resume_template(job_id)
         tasks = self._tasks(job_id)
         selected = [
             task["task_id"]
