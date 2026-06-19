@@ -521,3 +521,13 @@
 - 验证：见 Task 9 最终输出。
   - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
   - `.venv/bin/python -m pytest -q`：`158 passed`。
+
+## 2026-06-19 - SimulationPlan strict-input validation 修复
+
+- 目标：拒绝非 object section、未知字段和 physics 中放错层级的物理要求。
+- 修改：
+  - `src/simulation_plan.py`：新增 `KNOWN_TOP_KEYS`、`KNOWN_SECTION_KEYS` 和 `_validate_input_structure()`，在规范化前检查顶层/各 section 的字段名；section 非 dict 时返回 `plan_validation_error`；未知字段列出完整路径。
+  - `tests/test_simulation_plan.py`：新增 6 个严格输入测试（sweep=list、未知 section 字段、physics 错层字段、未知顶层字段、intent=string、最小合法 Plan 仍通过）。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`164 passed`。

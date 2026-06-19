@@ -9,6 +9,44 @@ from typing import Any
 
 SCHEMA_VERSION = "0.1"
 MAX_TASKS = 100
+
+KNOWN_TOP_KEYS = {
+    "schema_version",
+    "intent",
+    "device",
+    "physics",
+    "sweep",
+    "execution",
+    "outputs",
+    "acceptance",
+}
+
+KNOWN_SECTION_KEYS = {
+    "intent": {"summary"},
+    "device": {"type"},
+    "physics": {"materials", "source", "monitors", "boundaries", "mesh", "requirements"},
+    "sweep": {
+        "axis",
+        "ratio_values",
+        "period_values_m",
+        "height_values_m",
+        "fixed_height_m",
+        "fixed_period_m",
+    },
+    "execution": {
+        "resource",
+        "express_mode",
+        "processes",
+        "capacity",
+        "hide",
+        "template",
+    },
+    "outputs": {"include_models"},
+    "acceptance": {"required_quality", "required_task_success_rate"},
+}
+
+SECTION_NAMES = tuple(KNOWN_SECTION_KEYS)
+
 TEMPLATE_INHERITED_KEYS = (
     "materials",
     "source",
@@ -472,6 +510,43 @@ def _validate_normalized_plan(plan: dict) -> dict | None:
     return None
 
 
+def _validate_input_structure(plan: dict) -> dict | None:
+    """Reject non-object sections and unknown fields before normalization.
+
+    Returns None when the input structure is acceptable, or an error dict.
+    """
+    unknown = []
+
+    for key in plan:
+        if key not in KNOWN_TOP_KEYS:
+            unknown.append(key)
+        elif key in SECTION_NAMES:
+            value = plan[key]
+            if not isinstance(value, dict):
+                return _error(
+                    "plan_validation_error",
+                    f"{key} must be a JSON object.",
+                    {"path": key, "received_type": type(value).__name__},
+                )
+            known_keys = KNOWN_SECTION_KEYS[key]
+            for sub_key in value:
+                if sub_key not in known_keys:
+                    unknown.append(f"{key}.{sub_key}")
+
+    if unknown:
+        return _error(
+            "plan_validation_error",
+            "Input contains unknown fields.",
+            {
+                "unknown_fields": [
+                    {"path": path, "message": f"'{path}' is not a recognised SimulationPlan v0.1 field."}
+                    for path in unknown
+                ],
+            },
+        )
+    return None
+
+
 def validate_simulation_plan(plan: dict) -> dict:
     if not isinstance(plan, dict):
         return {
@@ -482,6 +557,10 @@ def validate_simulation_plan(plan: dict) -> dict:
                 "details": {},
             },
         }
+
+    input_error = _validate_input_structure(plan)
+    if input_error:
+        return input_error
 
     normalized, defaults_applied = _normalize(plan)
 

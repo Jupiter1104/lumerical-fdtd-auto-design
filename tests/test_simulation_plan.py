@@ -170,6 +170,69 @@ def test_height_sweep_has_expected_task_count():
     assert "period_values_m" not in result["normalized_plan"]["sweep"]
 
 
+# ============================================================
+# Strict-input validation
+# ============================================================
+
+
+def test_sweep_as_list_is_rejected_not_silently_defaulted():
+    result = validate_simulation_plan({"sweep": []})
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    assert "sweep" in result["error"]["message"].lower()
+    assert "object" in result["error"]["message"].lower()
+
+
+def test_unknown_field_in_sweep_section_is_rejected():
+    result = validate_simulation_plan(
+        {"sweep": {"period_values_nm": [390, 540]}}
+    )
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    assert "unknown" in result["error"]["message"].lower()
+    unknown_paths = [
+        item["path"] for item in result["error"]["details"].get("unknown_fields", [])
+    ]
+    assert "sweep.period_values_nm" in unknown_paths
+
+
+def test_physics_requirement_at_wrong_level_is_rejected():
+    result = validate_simulation_plan(
+        {"physics": {"wavelength_m": 810e-9}}
+    )
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    unknown_paths = [
+        item["path"] for item in result["error"]["details"].get("unknown_fields", [])
+    ]
+    assert "physics.wavelength_m" in unknown_paths
+
+
+def test_unknown_top_level_field_is_rejected():
+    result = validate_simulation_plan({"simulate_this": True})
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    unknown_paths = [
+        item["path"] for item in result["error"]["details"].get("unknown_fields", [])
+    ]
+    assert "simulate_this" in unknown_paths
+
+
+def test_intent_as_string_is_rejected():
+    result = validate_simulation_plan({"intent": "sweep metasurface"})
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_validation_error"
+    assert "intent" in result["error"]["message"].lower()
+    assert "object" in result["error"]["message"].lower()
+
+
+def test_minimal_valid_plan_still_passes():
+    result = validate_simulation_plan({})
+    assert result["ok"] is True
+    assert result["task_count"] == 4
+    assert result["plan_fingerprint"]
+
+
 from src.simulation_plan import (
     approve_simulation_plan,
     validate_execution_approvals,
