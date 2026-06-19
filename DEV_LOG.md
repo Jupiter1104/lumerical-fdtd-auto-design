@@ -492,3 +492,17 @@
   - `5000` mock 2×2：job_id `job_20260619_000703_metasurface_sweep`，`4 succeeded / 0 failed`，quality `pass`。
 - 注意：
   - Windows 连接表仍短暂显示旧 `5004` listener / PID `37336`，但该 PID 已无进程对象，`5004` HTTP 不响应；当前可用服务为 `5000`。
+
+## 2026-06-19 - MCP 接入持久 jobs API
+
+- 目标：让 Claude Code / MCP 直接调用当前已验证的 `/jobs/*` 状态机，而不是旧 `/sweep/*`。
+- 修改：
+  - 新增 `src/tools/jobs.py`，注册 `fdtd_job_plan/start/status/tasks/resume`。
+  - 新增 metasurface 便捷工具 `fdtd_metasurface_sweep_plan/start`，默认 mock、CPU、`EXPRESS_MODE=0`，real 需要 `approved=True` 后才写入 `approved_for=real_run`。
+  - `.mcp.json` 默认指向 `FDTD_RPC_URL=http://localhost:5000`。
+  - 旧 `fdtd_sweep_*` 标记为 legacy compatibility。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：`124 passed`。
+  - `rg -n "localhost:5001|127\\.0\\.0\\.1:5001|5001" src/server.py README.md TECH_STACK.md docs/RPC_API_V1.md .mcp.json tests/test_mcp_config.py || true`：无输出。
+  - `rg -n 'sweep_config|sweep_run|sweep_status|/sweep' src/tools/jobs.py tests/test_mcp_jobs_tools.py`：无输出。
