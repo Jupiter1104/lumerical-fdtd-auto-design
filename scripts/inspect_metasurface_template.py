@@ -107,9 +107,15 @@ class ReadOnlyFdtdAdapter:
     def get_version(self) -> str:
         getter = getattr(self._fdtd, "getversion", None)
         if callable(getter):
-            return str(getter())
-        self._fdtd.eval("__template_inspector_version=getversion;")
-        return str(self._fdtd.getv("__template_inspector_version"))
+            try:
+                return str(getter())
+            except Exception:
+                pass
+        try:
+            self._fdtd.eval("__template_inspector_version=getversion;")
+            return str(self._fdtd.getv("__template_inspector_version"))
+        except Exception:
+            return "unknown"
 
     def get_named_count(self, path: str) -> int:
         return int(self._fdtd.getnamednumber(path))
