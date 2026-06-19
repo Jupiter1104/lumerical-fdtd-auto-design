@@ -309,7 +309,7 @@ def _values_match(actual, expected) -> bool:
     if actual is None:
         return False
     if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
-        return float(actual) == float(expected)
+        return abs(float(actual) - float(expected)) < 1e-12
     return False
 
 
