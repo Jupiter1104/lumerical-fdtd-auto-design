@@ -168,3 +168,148 @@ def test_height_sweep_has_expected_task_count():
     assert result["ok"] is True
     assert result["task_count"] == 4
     assert "period_values_m" not in result["normalized_plan"]["sweep"]
+
+
+from src.simulation_plan import (
+    approve_simulation_plan,
+    validate_execution_approvals,
+)
+
+
+def test_plan_can_be_approved_only_for_matching_fingerprint():
+    validated = validate_simulation_plan({})
+
+    approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        validated["plan_fingerprint"],
+    )
+
+    assert approval == {
+        "ok": True,
+        "approval": {
+            "approved": True,
+            "approved_for": "simulation_plan",
+            "schema_version": "0.1",
+            "plan_fingerprint": validated["plan_fingerprint"],
+        },
+    }
+
+
+def test_changed_plan_rejects_old_fingerprint():
+    old = validate_simulation_plan({})
+    changed = {
+        "sweep": {"ratio_values": [0.2, 0.5]},
+    }
+
+    approval = approve_simulation_plan(
+        changed,
+        old["plan_fingerprint"],
+    )
+
+    assert approval["ok"] is False
+    assert approval["error"]["type"] == "plan_fingerprint_mismatch"
+
+
+def test_mock_requires_matching_plan_approval():
+    validated = validate_simulation_plan({})
+
+    missing = validate_execution_approvals(
+        validated,
+        mode="mock",
+        plan_approval=None,
+    )
+
+    assert missing["ok"] is False
+    assert missing["error"]["type"] == "plan_approval_required"
+
+
+def test_real_requires_second_approval_and_template_contract():
+    validated = validate_simulation_plan({})
+    fingerprint = validated["plan_fingerprint"]
+    plan_approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        fingerprint,
+    )["approval"]
+
+    missing_real = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+    )
+    assert missing_real["error"]["type"] == "real_run_approval_required"
+
+    real_approval = {
+        "approved": True,
+        "approved_for": "real_run",
+        "plan_fingerprint": fingerprint,
+        "template_sha256": "abc",
+    }
+    missing_contract = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+        real_run_approval=real_approval,
+    )
+    assert missing_contract["error"]["type"] == "template_contract_required"
+
+
+def test_real_rejects_approval_for_an_old_plan_fingerprint():
+    validated = validate_simulation_plan({})
+    fingerprint = validated["plan_fingerprint"]
+    plan_approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        fingerprint,
+    )["approval"]
+
+    result = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+        real_run_approval={
+            "approved": True,
+            "approved_for": "real_run",
+            "plan_fingerprint": "old-fingerprint",
+            "template_sha256": "abc",
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "plan_fingerprint_mismatch"
+
+
+def test_real_template_contract_must_match_physics_requirements():
+    validated = validate_simulation_plan(
+        {
+            "physics": {
+                "requirements": {"wavelength_m": 810e-9}
+            }
+        }
+    )
+    fingerprint = validated["plan_fingerprint"]
+    plan_approval = approve_simulation_plan(
+        validated["normalized_plan"],
+        fingerprint,
+    )["approval"]
+    real_approval = {
+        "approved": True,
+        "approved_for": "real_run",
+        "plan_fingerprint": fingerprint,
+        "template_sha256": "abc",
+    }
+    result = validate_execution_approvals(
+        validated,
+        mode="real",
+        plan_approval=plan_approval,
+        real_run_approval=real_approval,
+        template_contract={
+            "path": "templates/metasurface/base_model.fsp",
+            "sha256": "abc",
+            "resource": "CPU",
+            "express_mode": 0,
+            "physics_strategy": "template_inherited",
+            "declared_physics": {"wavelength_m": 1550e-9},
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "template_contract_required"

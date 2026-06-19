@@ -538,3 +538,119 @@ def validate_simulation_plan(plan: dict) -> dict:
             warnings,
         ),
     }
+
+
+def approve_simulation_plan(plan: dict, fingerprint: str) -> dict:
+    validated = validate_simulation_plan(plan)
+    if not validated["ok"]:
+        return validated
+    actual = validated["plan_fingerprint"]
+    if fingerprint != actual:
+        return _error(
+            "plan_fingerprint_mismatch",
+            "The submitted fingerprint does not match the normalized Plan.",
+            {"expected": actual, "received": fingerprint},
+        )
+    return {
+        "ok": True,
+        "approval": {
+            "approved": True,
+            "approved_for": "simulation_plan",
+            "schema_version": SCHEMA_VERSION,
+            "plan_fingerprint": actual,
+        },
+    }
+
+
+def _approval_matches(approval, approved_for: str, fingerprint: str) -> bool:
+    return (
+        isinstance(approval, dict)
+        and approval.get("approved") is True
+        and approval.get("approved_for") == approved_for
+        and approval.get("plan_fingerprint") == fingerprint
+    )
+
+
+def _requirements_match(requirements: dict, declared: dict) -> bool:
+    if not isinstance(declared, dict):
+        return False
+    return all(declared.get(key) == value for key, value in requirements.items())
+
+
+def validate_execution_approvals(
+    validated_plan: dict,
+    *,
+    mode: str,
+    plan_approval,
+    real_run_approval=None,
+    template_contract=None,
+) -> dict:
+    if not validated_plan.get("ok"):
+        return validated_plan
+    if mode not in {"mock", "real"}:
+        return _error(
+            "plan_validation_error",
+            "mode must be mock or real.",
+            {"mode": mode},
+        )
+
+    fingerprint = validated_plan["plan_fingerprint"]
+    if not _approval_matches(
+        plan_approval,
+        "simulation_plan",
+        fingerprint,
+    ):
+        error_type = (
+            "plan_fingerprint_mismatch"
+            if isinstance(plan_approval, dict)
+            else "plan_approval_required"
+        )
+        return _error(
+            error_type,
+            "A matching SimulationPlan approval is required.",
+        )
+    if mode == "mock":
+        return {"ok": True}
+
+    if (
+        isinstance(real_run_approval, dict)
+        and real_run_approval.get("approved") is True
+        and real_run_approval.get("approved_for") == "real_run"
+        and real_run_approval.get("plan_fingerprint") != fingerprint
+    ):
+        return _error(
+            "plan_fingerprint_mismatch",
+            "The real-run approval targets a different Plan.",
+        )
+    if not _approval_matches(real_run_approval, "real_run", fingerprint):
+        return _error(
+            "real_run_approval_required",
+            "A matching real-run approval is required.",
+        )
+    if not isinstance(template_contract, dict):
+        return _error(
+            "template_contract_required",
+            "A verified template contract is required for real mode.",
+        )
+
+    plan = validated_plan["normalized_plan"]
+    execution = plan["execution"]
+    contract_ok = (
+        template_contract.get("path") == execution["template"]
+        and template_contract.get("sha256")
+        == real_run_approval.get("template_sha256")
+        and template_contract.get("resource") == "CPU"
+        and template_contract.get("express_mode") == 0
+        and template_contract.get("physics_strategy")
+        == "template_inherited"
+        and _requirements_match(
+            plan["physics"]["requirements"],
+            template_contract.get("declared_physics", {}),
+        )
+    )
+    if not contract_ok:
+        return _error(
+            "template_contract_required",
+            "Template contract does not match the approved Plan.",
+        )
+    return {"ok": True}
