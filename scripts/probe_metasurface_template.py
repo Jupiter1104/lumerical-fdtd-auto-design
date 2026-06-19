@@ -564,3 +564,315 @@ def import_lumapi():
     if candidate.is_dir() and str(candidate) not in sys.path:
         sys.path.append(str(candidate))
     return importlib.import_module("lumapi")
+
+
+# ================================================================
+# Probe orchestration and output assembly
+# ================================================================
+
+
+def _failure_probe(
+    *,
+    template: Path,
+    error_type: str,
+    message: str,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+    cleanup_state: str,
+) -> dict:
+    """Minimal probe output for failure before template load."""
+    probe = {
+        "probe_version": PROBE_VERSION,
+        "probe_only": True,
+        "status": "probe_failed",
+        "probe_fingerprint": "",
+        "template": {
+            "logical_path": "templates/metasurface/base_model.fsp",
+            "absolute_path": str(template.resolve()),
+        },
+        "installation": {},
+        "inspector": {
+            "probe_at": utc_now(),
+            "hostname": hostname,
+            "python_executable": python_executable,
+            "code_commit": code_commit,
+            "cleanup_state": cleanup_state,
+        },
+        "scopes": {},
+        "objects": [],
+        "identically_named_evidence": [],
+        "role_candidates": {},
+        "model_parameters": {},
+        "fdtd_configuration": {},
+        "mesh_configuration": {},
+        "source_strategy": {},
+        "monitors": [],
+        "analysis_group": {},
+        "warnings": [],
+        "errors": [{"type": error_type, "message": message}],
+    }
+    probe["probe_fingerprint"] = probe_fingerprint(probe)
+    return probe
+
+
+def build_probe(
+    adapter: ProbeAdapter,
+    *,
+    template: Path,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+    lumapi_module=None,
+) -> dict:
+    """Assemble complete probe JSON from all sub-probes."""
+    errors = []
+    warnings = []
+
+    # 1. Template identity
+    stat = template.stat()
+    template_id = {
+        "logical_path": "templates/metasurface/base_model.fsp",
+        "absolute_path": str(template.resolve()),
+        "sha256": file_sha256(template),
+        "size_bytes": stat.st_size,
+        "modified_at": datetime.fromtimestamp(
+            stat.st_mtime, tz=timezone.utc
+        ).isoformat(),
+    }
+
+    # 2. Installation identity
+    if lumapi_module is None:
+        lumapi_module = import_lumapi()
+    install_id = probe_installation_identity(lumapi_module)
+    fail_install, install_warnings = validate_probe_installation(install_id)
+    warnings.extend(install_warnings)
+    if fail_install:
+        errors.append({
+            "type": "install_identity_failed",
+            "message": "Installation identity unconfirmable",
+        })
+
+    # 3. Scope enumeration
+    scopes = adapter.enumerate_scopes([
+        "::", "::model", "::s_params", "::model::s_params",
+    ])
+
+    # 4. Full object enumeration
+    objects = adapter.enumerate_objects_recursive([
+        "::", "::model", "::model::s_params",
+    ])
+
+    # 5. Identically-named object evidence
+    identicals = adapter.probe_identically_named_objects()
+
+    # 6. Role candidates
+    role_candidates = {}
+    try:
+        role_candidates["structure"] = adapter.probe_structure_candidates({
+            "pillar": ["::pillar", "::model::pillar"],
+            "substrate": ["::substrate", "::model::substrate"],
+        })
+    except Exception as exc:
+        errors.append({
+            "type": "structure_probe_failed", "message": str(exc),
+        })
+
+    # 7. FDTD
+    try:
+        fdtd_config = adapter.probe_fdtd_configuration()
+    except Exception as exc:
+        fdtd_config = {"error": str(exc)}
+        errors.append({
+            "type": "fdtd_probe_failed", "message": str(exc),
+        })
+
+    # 8. Mesh
+    try:
+        mesh_config = adapter.probe_mesh_configuration()
+    except Exception as exc:
+        mesh_config = {"error": str(exc)}
+        errors.append({
+            "type": "mesh_probe_failed", "message": str(exc),
+        })
+
+    # 9. Model parameters
+    try:
+        model_params = adapter.probe_model_parameters()
+    except Exception as exc:
+        model_params = {"error": str(exc)}
+        errors.append({
+            "type": "model_params_probe_failed", "message": str(exc),
+        })
+
+    # 10. Source strategy
+    try:
+        source = adapter.probe_source_strategy()
+    except Exception as exc:
+        source = {"classification": "probe_error", "error": str(exc)}
+        errors.append({
+            "type": "source_strategy_probe_failed", "message": str(exc),
+        })
+
+    # 11. Monitors
+    try:
+        monitors = adapter.probe_monitors()
+    except Exception as exc:
+        monitors = []
+        errors.append({
+            "type": "monitors_probe_failed", "message": str(exc),
+        })
+
+    # 12. Analysis group
+    try:
+        analysis_group = adapter.probe_analysis_group()
+    except Exception as exc:
+        analysis_group = {}
+        errors.append({
+            "type": "analysis_probe_failed", "message": str(exc),
+        })
+
+    # Determine status
+    if fail_install:
+        status = "probe_failed"
+    elif errors:
+        status = "probe_with_errors"
+    else:
+        status = "probe"
+
+    probe = {
+        "probe_version": PROBE_VERSION,
+        "probe_only": True,
+        "status": status,
+        "probe_fingerprint": "",
+        "template": template_id,
+        "inventory_fingerprint": {
+            "stage_a": STAGE_A_INVENTORY_FINGERPRINT,
+        },
+        "installation": install_id,
+        "inspector": {
+            "probe_at": utc_now(),
+            "hostname": hostname,
+            "python_executable": python_executable,
+            "code_commit": code_commit,
+            "cleanup_state": "pending",
+        },
+        "scopes": scopes,
+        "objects": objects,
+        "identically_named_evidence": identicals,
+        "role_candidates": role_candidates,
+        "model_parameters": model_params,
+        "fdtd_configuration": fdtd_config,
+        "mesh_configuration": mesh_config,
+        "source_strategy": source,
+        "monitors": monitors,
+        "analysis_group": analysis_group,
+        "warnings": warnings,
+        "errors": errors,
+    }
+    probe["probe_fingerprint"] = probe_fingerprint(probe)
+    return probe
+
+
+def run_probe(
+    *,
+    template: Path,
+    output: Path,
+    fdtd_factory,
+    hostname: str,
+    python_executable: str,
+    code_commit: str,
+    lumapi_factory=None,
+) -> int:
+    """Main probe runner with cleanup."""
+    if not template.is_file():
+        atomic_write_json(
+            output,
+            _failure_probe(
+                template=template,
+                error_type="template_not_found",
+                message=f"Template not found: {template}",
+                hostname=hostname,
+                python_executable=python_executable,
+                code_commit=code_commit,
+                cleanup_state="not_started",
+            ),
+        )
+        return 1
+
+    fdtd = None
+    adapter = None
+    probe = None
+    try:
+        fdtd = fdtd_factory(True)
+        adapter = ProbeAdapter(fdtd)
+        adapter.load(str(template.resolve()))
+        probe = build_probe(
+            adapter,
+            template=template,
+            hostname=hostname,
+            python_executable=python_executable,
+            code_commit=code_commit,
+            lumapi_module=lumapi_factory() if lumapi_factory else None,
+        )
+    except Exception as exc:
+        probe = _failure_probe(
+            template=template,
+            error_type="probe_open_failed",
+            message=str(exc),
+            hostname=hostname,
+            python_executable=python_executable,
+            code_commit=code_commit,
+            cleanup_state="pending" if fdtd is not None else "not_started",
+        )
+    finally:
+        if adapter is not None:
+            try:
+                adapter.close()
+                probe["inspector"]["cleanup_state"] = "closed"
+            except Exception as exc:
+                probe["inspector"]["cleanup_state"] = "close_failed"
+                probe.setdefault("warnings", []).append(
+                    {"type": "cleanup_failed", "message": str(exc)}
+                )
+        probe["probe_fingerprint"] = probe_fingerprint(probe)
+        atomic_write_json(output, probe)
+
+    return 0 if probe["status"] == "probe" else 1
+
+
+# ================================================================
+# CLI
+# ================================================================
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Targeted read-only probe for the metasurface template."
+    )
+    parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--template", default=str(DEFAULT_TEMPLATE))
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    if not args.probe:
+        print("Only --probe is available in Stage B0.", file=sys.stderr)
+        return 2
+    code = run_probe(
+        template=Path(args.template),
+        output=Path(args.output),
+        fdtd_factory=lambda hide: import_lumapi().FDTD(hide=hide),
+        hostname=socket.gethostname(),
+        python_executable=sys.executable,
+        code_commit=current_commit(),
+        lumapi_factory=import_lumapi,
+    )
+    print(f"Probe: {args.output}")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
