@@ -669,3 +669,16 @@
 - Important fix: real-run guard must accept verified Stage B1 contract shape.
 - Stop gate: user must approve the exact generated packet before Stage C1.
 
+
+## 2026-06-19 - Stage C0 Windows preflight packet
+
+- Windows HEAD: 4970204, LAPTOP-OR14JLNC.
+- Contract confirmed: verified=True, fingerprint=bdfe2fceccbaeeadd3bcc0c349708b15d56c3b0090349037e726f475f63413d1.
+- Preflight status: ready_for_human_approval, task_count=4.
+- Plan fingerprint: e8c957df2c8112c876142998ecb088fa9c78f4a6c34037834a1cddae24c87810.
+- Template SHA: 03ba1f3ea9db6e86caa9c5458bcf84b6adb92db6c0664e60f262e2f5edde0176.
+- Execution: CPU, express_mode=0, processes=1, capacity=1, hide=True, mesh_accuracy=6.
+- Failed checks: [], warnings: physics_review_required, version_unknown_warning.
+- No FDTD solve, no .fsp mutation, no real job created.
+- Stage C0 complete. Stopped before Stage C1 real run approval.
+
