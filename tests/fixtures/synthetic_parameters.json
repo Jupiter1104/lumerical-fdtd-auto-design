@@ -1,0 +1,50 @@
+{
+    "schema_version": "1.0",
+    "parameters": {
+        "pillar_radius": {
+            "type": "float",
+            "default": 0.188e-6,
+            "min": 0.1e-6,
+            "max": 0.5e-6,
+            "unit": "m",
+            "source_ref": {"locator": "probe_stage_b0"}
+        },
+        "pillar_height": {
+            "type": "float",
+            "default": 0.7e-6,
+            "min": 0.5e-6,
+            "max": 0.9e-6,
+            "unit": "m",
+            "source_ref": {"locator": "probe_stage_b0"}
+        },
+        "period": {
+            "type": "float",
+            "default": 0.47e-6,
+            "min": 0.3e-6,
+            "max": 0.6e-6,
+            "unit": "m",
+            "source_ref": {"locator": "probe_stage_b0"}
+        }
+    },
+    "assumptions": [
+        {"parameter": "pillar_radius", "value": 0.188e-6, "reason": "From Stage B0.1 probe measurement"},
+        {"parameter": "pillar_height", "value": 0.7e-6, "reason": "From Stage B0.1 probe measurement"},
+        {"parameter": "period", "value": 0.47e-6, "reason": "From Stage B0.1 probe measurement"}
+    ],
+    "materials": [
+        {"name": "Si3N4", "type": "dielectric", "properties": {"index": 2.0}},
+        {"name": "SiO2", "type": "dielectric", "properties": {"index": 1.44}}
+    ],
+    "geometry": [
+        {
+            "type": "rectangle",
+            "name": "substrate",
+            "properties": {"x span": "${period}", "y span": "${period}", "z span": 1.11e-6, "material": "SiO2"}
+        },
+        {
+            "type": "circle",
+            "name": "pillar",
+            "properties": {"radius": "${pillar_radius}", "z span": "${pillar_height}", "material": "Si3N4"}
+        }
+    ]
+}
