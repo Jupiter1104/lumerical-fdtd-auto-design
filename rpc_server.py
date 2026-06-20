@@ -19,6 +19,7 @@ from typing import Any, Optional
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
+from src.device_recipe import compile_recipe
 from src.job_store import JobError, JobStore
 from src.native_sweep import NativeSweepRunner
 from src.sweep_job import write_job_artifacts
@@ -1049,6 +1050,80 @@ def create_app(
         data = _json_body()
         executor = _job_executor(data, session)
         return _success(jobs.resume(job_id, executor=executor))
+
+    # ------------------------------------------------------------------
+    # Recipe build (Task 6)
+    # ------------------------------------------------------------------
+
+    @app.post("/recipes/build")
+    def recipes_build():
+        reject_during_sweep()
+        data = _json_body()
+        recipe = _required(data, "recipe")
+        compile_fingerprint = _required(data, "compile_fingerprint")
+        output_fsp = _required(data, "output_fsp")
+        approved = data.get("approved", False)
+
+        # 1. Must be approved
+        if not approved:
+            raise RpcError(
+                "approval_required",
+                "Recipe build requires explicit approval.",
+                403,
+            )
+
+        # 2. Recompile and compare fingerprint
+        compiled = compile_recipe(recipe)
+        if not compiled["ok"]:
+            raise RpcError(
+                "recipe_compile_error",
+                "Recipe failed to compile on server side.",
+                400,
+                {"errors": compiled.get("errors", [])},
+            )
+
+        if compiled["compile_fingerprint"] != compile_fingerprint:
+            raise RpcError(
+                "compile_fingerprint_mismatch",
+                "The compile fingerprint does not match. The recipe may have been "
+                "tampered with or the caller used a different compiler version.",
+                409,
+                {
+                    "expected": compile_fingerprint,
+                    "actual": compiled["compile_fingerprint"],
+                },
+            )
+
+        # 3. Create clean project
+        adapter.project_new(
+            name=f"recipe_build_{output_fsp}",
+            discard_unsaved=True,
+        )
+
+        # 4. Execute build-only script
+        log_lines: list = []
+        script = compiled["script"]
+        eval_result = session.eval(script)
+        log_lines.append(f"Script executed ({len(script)} chars).")
+
+        # 5. Save to output path
+        save_result = session.save(str(output_fsp))
+        log_lines.append(f"Project saved to {save_result.get('saved_to', output_fsp)}.")
+
+        # 6. Gather object list
+        object_list = adapter.object_list()
+        log_lines.append(
+            f"Object list: {len(object_list.get('objects', []))} objects."
+        )
+
+        return _success(
+            {
+                "model_path": str(output_fsp),
+                "objects": object_list.get("objects", []),
+                "log": log_lines,
+                "compile_fingerprint": compiled["compile_fingerprint"],
+            }
+        )
 
     return app
 

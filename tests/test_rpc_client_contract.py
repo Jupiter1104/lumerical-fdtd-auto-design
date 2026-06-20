@@ -179,6 +179,19 @@ def fake_http_server():
         ("result_list", (), "GET", "/results", None),
         ("result_read", ("mon", "T"), "GET", "/results/mon/T", None),
         ("result_describe", ("mon",), "GET", "/results/mon/describe", None),
+        # --- v1 typed API: recipe build ---
+        (
+            "recipe_build",
+            ({"schema_version": "1.0"}, "sha256:abc", "C:\\Users\\me\\device.fsp", True),
+            "POST",
+            "/recipes/build",
+            {
+                "recipe": {"schema_version": "1.0"},
+                "compile_fingerprint": "sha256:abc",
+                "output_fsp": "C:\\Users\\me\\device.fsp",
+                "approved": True,
+            },
+        ),
     ],
 )
 def test_client_uses_v1_routes(

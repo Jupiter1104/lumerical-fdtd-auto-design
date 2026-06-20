@@ -375,6 +375,25 @@ class RpcClient:
             f"/results/{quote(name, safe='')}/{quote(attribute, safe='')}"
         )
 
+    # Recipe build (Task 6)
+
+    def recipe_build(
+        self,
+        recipe: dict,
+        compile_fingerprint: str,
+        output_fsp: str,
+        approved: bool = False,
+    ) -> dict:
+        return self._post(
+            "/recipes/build",
+            {
+                "recipe": recipe,
+                "compile_fingerprint": compile_fingerprint,
+                "output_fsp": output_fsp,
+                "approved": approved,
+            },
+        )
+
     # Deployed sweep server extensions
 
     def sweep_config_get(self) -> dict:

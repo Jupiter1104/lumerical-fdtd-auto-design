@@ -337,3 +337,126 @@ def test_legacy_routes_are_thin_deprecated_aliases(
         "deprecated_route": legacy,
         "use_instead": replacement,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Recipe build route tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+MINIMAL_RECIPE = {
+    "schema_version": "1.0",
+    "parameters": {
+        "pillar_radius": {
+            "type": "float",
+            "default": 100e-9,
+            "min": 50e-9,
+            "max": 200e-9,
+            "unit": "m",
+            "source_ref": {"locator": "model::pillar_radius"},
+        }
+    },
+    "assumptions": [
+        {"parameter": "pillar_radius", "reason": "Typical value for NIR metasurface"}
+    ],
+    "materials": [
+        {"name": "SiO2", "type": "dielectric", "properties": {"index": 1.45}}
+    ],
+    "geometry": [
+        {
+            "type": "rectangle",
+            "name": "pillar",
+            "properties": {"x_span": "${pillar_radius} * 2"},
+        }
+    ],
+}
+
+
+def test_recipe_build_requires_approval(server_module, fake_session):
+    """POST /recipes/build with approved=false returns approval_required."""
+    from src.device_recipe import compile_recipe
+
+    app = server_module.create_app(fake_session)
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    compile_result = compile_recipe(MINIMAL_RECIPE)
+    assert compile_result["ok"] is True
+
+    response = client.post(
+        "/recipes/build",
+        json={
+            "recipe": MINIMAL_RECIPE,
+            "compile_fingerprint": compile_result["compile_fingerprint"],
+            "output_fsp": "C:\\Users\\me\\device.fsp",
+            "approved": False,
+        },
+    )
+
+    assert response.status_code == 403
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "approval_required"
+
+
+def test_recipe_build_rejects_fingerprint_mismatch(server_module, fake_session):
+    """POST /recipes/build with wrong fingerprint returns compile_fingerprint_mismatch."""
+    from src.device_recipe import compile_recipe
+
+    app = server_module.create_app(fake_session)
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    compile_result = compile_recipe(MINIMAL_RECIPE)
+    assert compile_result["ok"] is True
+
+    response = client.post(
+        "/recipes/build",
+        json={
+            "recipe": MINIMAL_RECIPE,
+            "compile_fingerprint": "sha256:deadbeef",
+            "output_fsp": "C:\\Users\\me\\device.fsp",
+            "approved": True,
+        },
+    )
+
+    assert response.status_code == 409
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "compile_fingerprint_mismatch"
+
+
+def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session):
+    """POST /recipes/build with correct fingerprint + approved saves .fsp."""
+    from src.device_recipe import compile_recipe
+
+    app = server_module.create_app(fake_session)
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    compile_result = compile_recipe(MINIMAL_RECIPE)
+    assert compile_result["ok"] is True
+
+    output_path = "C:\\Users\\me\\device.fsp"
+
+    response = client.post(
+        "/recipes/build",
+        json={
+            "recipe": MINIMAL_RECIPE,
+            "compile_fingerprint": compile_result["compile_fingerprint"],
+            "output_fsp": output_path,
+            "approved": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["model_path"] == output_path
+    assert "objects" in payload
+    assert "log" in payload
+    assert isinstance(payload["objects"], list)
+
+    # Verify session.save was called with the output path
+    save_calls = [c for c in fake_session.calls if c[0] == "save"]
+    assert len(save_calls) == 1
+    assert save_calls[0][1]["file_path"] == output_path
