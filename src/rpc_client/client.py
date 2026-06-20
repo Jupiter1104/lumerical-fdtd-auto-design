@@ -204,6 +204,133 @@ class RpcClient:
             request or {},
         )
 
+    # Project management (Task 1 stubs — routed to _get/_post)
+
+    def project_new(self, body: Optional[dict] = None) -> dict:
+        return self._post("/project/new", body or {})
+
+    def project_load(self, file_path: str) -> dict:
+        return self._post("/project/load", {"file_path": file_path})
+
+    def project_save(self, file_path: Optional[str] = None) -> dict:
+        body = {}
+        if file_path is not None:
+            body["file_path"] = file_path
+        return self._post("/project/save", body)
+
+    def project_status(self) -> dict:
+        return self._get("/project/status")
+
+    def switch_to_layout(self) -> dict:
+        return self._post("/project/switch-to-layout")
+
+    # Object management (Task 1 stubs)
+
+    def object_create(self, body: dict) -> dict:
+        return self._post("/objects/create", body)
+
+    def object_list(self) -> dict:
+        return self._get("/objects")
+
+    def object_get(self, name: str) -> dict:
+        return self._get(f"/objects/{quote(name, safe='')}")
+
+    def object_update(self, name: str, body: dict) -> dict:
+        return self._post(f"/objects/{quote(name, safe='')}/update", body)
+
+    def object_copy(self, name: str, new_name: str) -> dict:
+        return self._post(
+            f"/objects/{quote(name, safe='')}/copy",
+            {"new_name": new_name},
+        )
+
+    def object_rename(self, name: str, new_name: str) -> dict:
+        return self._post(
+            f"/objects/{quote(name, safe='')}/rename",
+            {"new_name": new_name},
+        )
+
+    def object_delete(self, name: str) -> dict:
+        return self._post(f"/objects/{quote(name, safe='')}/delete")
+
+    def group_update(self, body: dict) -> dict:
+        return self._post("/objects/group-update", body)
+
+    # Material management (Task 1 stubs)
+
+    def material_create(self, body: dict) -> dict:
+        return self._post("/materials/create", body)
+
+    def material_list(self) -> dict:
+        return self._get("/materials")
+
+    def material_get(self, name: str) -> dict:
+        return self._get(f"/materials/{quote(name, safe='')}")
+
+    def material_update(self, name: str, body: dict) -> dict:
+        return self._post(f"/materials/{quote(name, safe='')}/update", body)
+
+    def material_assign(self, body: dict) -> dict:
+        return self._post("/materials/assign", body)
+
+    def material_fit_diagnose(self, body: dict) -> dict:
+        return self._post("/materials/fit-diagnose", body)
+
+    # Solver & mesh management (Task 1 stubs)
+
+    def solver_get(self) -> dict:
+        return self._get("/solver")
+
+    def solver_update(self, body: dict) -> dict:
+        return self._post("/solver/update", body)
+
+    def mesh_diagnose(self) -> dict:
+        return self._get("/solver/mesh-diagnose")
+
+    def resource_estimate(self) -> dict:
+        return self._get("/solver/resource-estimate")
+
+    # Source management (Task 1 stubs)
+
+    def source_create(self, body: dict) -> dict:
+        return self._post("/sources/create", body)
+
+    def source_get(self, name: str) -> dict:
+        return self._get(f"/sources/{quote(name, safe='')}")
+
+    def source_update(self, name: str, body: dict) -> dict:
+        return self._post(f"/sources/{quote(name, safe='')}/update", body)
+
+    # Monitor management (Task 1 stubs)
+
+    def monitor_create(self, body: dict) -> dict:
+        return self._post("/monitors/create", body)
+
+    def monitor_get(self, name: str) -> dict:
+        return self._get(f"/monitors/{quote(name, safe='')}")
+
+    def monitor_update(self, name: str, body: dict) -> dict:
+        return self._post(f"/monitors/{quote(name, safe='')}/update", body)
+
+    # Analysis group management (Task 1 stubs)
+
+    def analysis_group_create(self, body: dict) -> dict:
+        return self._post("/analysis-groups/create", body)
+
+    def analysis_group_get(self, name: str) -> dict:
+        return self._get(f"/analysis-groups/{quote(name, safe='')}")
+
+    def analysis_group_update(self, name: str, body: dict) -> dict:
+        return self._post(f"/analysis-groups/{quote(name, safe='')}/update", body)
+
+    # Result inspection (Task 1 stubs)
+
+    def result_describe(self, name: str) -> dict:
+        return self._get(f"/results/{quote(name, safe='')}/describe")
+
+    def result_read(self, name: str, body: Optional[dict] = None) -> dict:
+        return self._post(f"/results/{quote(name, safe='')}/read", body or {})
+
     # Deployed sweep server extensions
 
     def sweep_config_get(self) -> dict:
