@@ -263,16 +263,55 @@ class TestAllTarget:
 
     def test_all_target_atomic_on_failure(self, temp_home):
         """If one target fails, no config files should be modified."""
-        # Create an existing config so we can detect changes
         cp = codex_path(temp_home)
         cp.parent.mkdir(parents=True, exist_ok=True)
         cp.write_text("original = true\n", encoding="utf-8")
-        original_content = cp.read_text("utf-8")
 
-        # The 'all' target includes 'codex', 'claude', 'hermes'
-        # We can't easily force a failure mid-way, but we verify that
-        # a successful 'all' run correctly creates all files.
-        # (Actual atomicity failure testing is done via invalid target)
-        r = run_configure("--target", "all")
+        r = run_configure("--target", "all", cwd_override=temp_home)
         assert r.returncode == 0, r.stderr
         assert codex_path(temp_home).exists()
+
+
+# ─── Path documentation guard ─────────────────────────────────────────────────
+
+OLD_CODEX_PATH = ".config/codex/mcp_servers.toml"
+OLD_CLAUDE_PATH = ".claude/.mcp.json"
+OLD_HERMES_PATH = ".config/hermes/config.yaml"
+
+
+class TestPathDocs:
+    """Ensure user-visible docs and help text reference the correct paths."""
+
+    def test_configure_docstring_has_correct_paths(self):
+        doc = CONFIGURE_SCRIPT.read_text(encoding="utf-8")
+        assert "~/.codex/config.toml" in doc, "docstring missing Codex path"
+        assert "<project-root>/.mcp.json" in doc, "docstring missing Claude path"
+        assert "~/.hermes/config.yaml" in doc, "docstring missing Hermes path"
+
+    def test_configure_docstring_lacks_old_paths(self):
+        """Old paths must not appear as active config targets.
+
+        They may appear in negating comments (e.g. "NOT ~/.claude/.mcp.json").
+        """
+        doc = CONFIGURE_SCRIPT.read_text(encoding="utf-8")
+        # Only check lines that are not comments/negations
+        active_lines = [
+            ln for ln in doc.splitlines()
+            if not ln.strip().startswith("#") and "NOT" not in ln
+        ]
+        active = "\n".join(active_lines)
+        assert OLD_CODEX_PATH not in active, f"old Codex path '{OLD_CODEX_PATH}' in active lines"
+        assert OLD_CLAUDE_PATH not in active, f"old Claude path '{OLD_CLAUDE_PATH}' in active lines"
+        assert OLD_HERMES_PATH not in active, f"old Hermes path '{OLD_HERMES_PATH}' in active lines"
+
+    def test_install_script_next_steps_have_correct_paths(self):
+        inst = (SCRIPTS_DIR / "install_mcp.sh").read_text(encoding="utf-8")
+        assert "~/.codex/config.toml" in inst, "next steps missing Codex path"
+        assert "<project-root>/.mcp.json" in inst, "next steps missing Claude path"
+        assert "~/.hermes/config.yaml" in inst, "next steps missing Hermes path"
+
+    def test_install_script_next_steps_lack_old_paths(self):
+        inst = (SCRIPTS_DIR / "install_mcp.sh").read_text(encoding="utf-8")
+        assert OLD_CODEX_PATH not in inst, f"old Codex path in install script"
+        assert OLD_CLAUDE_PATH not in inst, f"old Claude path in install script"
+        assert OLD_HERMES_PATH not in inst, f"old Hermes path in install script"

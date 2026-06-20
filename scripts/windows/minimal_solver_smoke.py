@@ -157,7 +157,7 @@ def main() -> int:
     # Step 11: save project to .fsp
     smoke_fsp = output_dir / "smoke_model.fsp"
     try:
-        resp = requests.post(f"{rpc_url}/project/save", json={"path": str(smoke_fsp)}, timeout=10)
+        resp = requests.post(f"{rpc_url}/project/save", json={"file_path": str(smoke_fsp)}, timeout=10)
         record_step("project_save", resp.json().get("ok", False), resp.json())
     except Exception as exc:
         record_step("project_save", False, {"error": str(exc)})

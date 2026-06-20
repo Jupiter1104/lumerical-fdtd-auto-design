@@ -65,6 +65,7 @@ def test_saves_fsp():
     content = _read()
     assert "/project/save" in content
     assert "smoke_model.fsp" in content
+    assert '"file_path"' in content
 
 
 def test_downloads_result_file():

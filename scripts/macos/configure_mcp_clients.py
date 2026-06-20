@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Configure MCP client configs (Codex, Claude, Hermes) for the FDTD server.
 
-Writes to well-known configuration file locations under $HOME:
-  - Codex:   ~/.config/codex/mcp_servers.toml   (TOML)
-  - Claude:  ~/.claude/.mcp.json                (JSON)
-  - Hermes:  ~/.config/hermes/config.yaml        (YAML)
+Writes to well-known configuration file locations:
+  - Codex:   ~/.codex/config.toml              (TOML)
+  - Claude:  <project-root>/.mcp.json           (JSON)
+  - Hermes:  ~/.hermes/config.yaml              (YAML)
 
 Usage:
   python configure_mcp_clients.py --target all
