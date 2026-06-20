@@ -24,10 +24,11 @@
 2. 在任意满足环境要求的 Windows 工作站上，通过首次配置完成 RPC 部署，此后可双击启动、停止、查询和重启。
 3. 支持 SSH 隧道和可信局域网直连，两种模式只通过 `FDTD_RPC_URL` 区分。
 4. 默认暴露精简的 API v1 MCP 工具面，并默认开放 raw Lumerical `eval/getv/setv` 高级能力。
-5. 使用 MCP stdio 协议、health、SimulationPlan 参数传递和 mock job 完成交付验收，不启动真实 FDTD 求解。
+5. 使用 MCP stdio、fake-lumapi 契约测试和一个有界 Windows 最小 solver smoke 完成交付验收；smoke 只证明工具链能运行，不作为物理实验或器件结果。
 6. 项目目录被 ToDesk 覆盖更新时，Windows 本机配置、日志、PID 和持久 job 不丢失。
 7. 允许上层 Agent 将用户自然语言转换为通用 SweepPlan，并由 MCP 确定性校验、展开和创建扫参任务。
 8. 允许上层 Agent 从论文中提取参数和引用位置，生成通用 DeviceRecipe；MCP 将 Recipe 确定性编译为可审计的 Lumerical script，经用户确认后创建 `.fsp`。
+9. 提供覆盖常规 FDTD 仿真 20 步流程的通用操作闭环，使 Agent 能像用户在 FDTD GUI 中一样搭建、检查、运行和读取任意器件。
 
 ## 非目标
 
@@ -43,6 +44,7 @@
 - MCP 不直接读取、OCR、总结或理解论文 PDF；论文阅读由 Codex、Claude Code 或 Hermes 完成。
 - MCP 不自动补造论文中的关键参数，不宣称生成结构与论文物理等价。
 - DeviceRecipe 编译完成后不自动连接 Windows、不自动创建模型、不自动运行求解。
+- 不以参数扫描、优化或论文器件的真实求解作为交付验收；唯一允许的 solver 验收是固定、单任务、低成本的最小技术 smoke。
 
 ## 总体架构
 
@@ -51,8 +53,10 @@ Codex / Claude Code / Hermes
             │ MCP stdio
             ▼
 Mac FDTD MCP Server
-  ├─ Session / Model / Geometry
+  ├─ Session / Project / Generic Objects
   ├─ Debug: eval / getv / setv
+  ├─ Materials / Solver / Sources / Monitors
+  ├─ Analysis / Diagnostics / Results
   ├─ DeviceRecipe validate / compile / build
   ├─ Generic SweepPlan validate / plan / start
   ├─ SimulationPlan / Approval
@@ -84,6 +88,7 @@ Mac FDTD MCP Server
 - 是 Lumerical FDTD 的唯一执行入口。
 - 使用 Lumerical v242 自带 Python 和 raw `lumapi`。
 - 继续提供 HTTP API v1、持久 JobStore、结果文件和飞书通知。
+- 新增通用 project/object/material/solver/source/monitor/analysis/result API v1 路由；Mac typed tools 不通过 `/debug/eval` 假装实现结构化能力。
 - 新增 `POST /recipes/build`，用于执行已确认的 build-only script 并保存 `.fsp`。
 - `/jobs/plan` 和 `/jobs/start` 新增 `job_type=recipe-sweep`，用于通用 Recipe 扫参。
 - Server 端可保留 legacy HTTP 别名兼容旧脚本，但这些别名不再通过 MCP 暴露。
@@ -94,6 +99,323 @@ Mac FDTD MCP Server
 - 局域网模式：Windows RPC 监听 `0.0.0.0`；Mac 的 `FDTD_RPC_URL` 指向 Windows 私网地址，例如 `http://192.168.1.20:5000`。
 - 局域网模式仅允许 Windows“专用网络”防火墙范围，不配置公网端口映射。
 - SSH 隧道断开时只报告连接失败，不自动回退到局域网地址或另一台电脑。
+
+## 实施优先级
+
+实现顺序固定为：
+
+1. 通用 FDTD 操作闭环。
+2. DeviceRecipe 编译、确认和 build。
+3. Generic SweepPlan 和 `recipe-sweep` 持久 job。
+4. 器件 Recipe 与 Skill 沉淀。
+
+DeviceRecipe 和 SweepPlan 必须复用通用操作闭环的编译器和 RPC 能力，不得另造第二套 Lumerical 执行后端。器件 Skill 只描述如何组合 Recipe、SweepPlan 和验收规则，不直接绕过 MCP 调用 Windows。
+
+## 通用 FDTD 操作闭环
+
+### 完成定义
+
+通用闭环必须覆盖：
+
+```text
+新建/加载工程
+→ 几何与材料
+→ FDTD region / 时间 / 背景 / 边界 / PML / 网格
+→ source / 方向 / 角度 / 偏振 / 波长或频率范围
+→ monitor / analysis group / 采样
+→ 材料拟合诊断与内存预估
+→ 参数扫描
+→ 运行
+→ 后处理
+→ 列举、读取、拉取和导出结果
+→ 保存 .fsp
+```
+
+每个阶段至少支持：
+
+- 结构化创建或配置。
+- 读取当前配置。
+- 编译或执行前审查。
+- 结构化错误诊断。
+- 保存为 DeviceRecipe 或 Skill 所需的稳定输入。
+
+### `0.1.0` 验收分层
+
+#### 必须端到端验收
+
+图中红色和橙色步骤必须具备 typed tools，并通过真实 API v1 端到端验证：
+
+- 几何和材料。
+- FDTD 求解区域。
+- 背景材料。
+- 边界条件。
+- 光源创建和完整光源设置。
+- 监视器创建、物理量和采样设置。
+- analysis group 创建。
+- 参数扫描。
+- 运行。
+- 查看、读取和下载结果。
+
+#### 必须具备配置、读取和诊断
+
+图中蓝色步骤必须具备 typed 配置、读取和诊断接口，但 `0.1.0` 不要求自动寻找最优值：
+
+- 仿真时间。
+- PML 参数。
+- 网格。
+- Auto shutoff min。
+- 材料拟合设置和拟合质量诊断。
+- 仿真内存预估。
+
+#### 通过通用高级接口覆盖
+
+图中黑色高级处理通过 analysis group 与默认开启的 raw script 能力覆盖：
+
+- analysis group setup script。
+- analysis script。
+- 自定义后处理。
+- 非标准 Lumerical 命令。
+
+### 20 步能力映射
+
+| 步骤 | 流程 | 结构化 MCP 能力 | `0.1.0` 验收 |
+|---|---|---|---|
+| 1 | 画几何结构并设置材料 | Generic object create/update；material create/assign | 端到端 |
+| 2 | 设置 FDTD 求解范围 | solver create/update/get | 端到端 |
+| 3 | 调整仿真时间 | solver timing get/set | 配置、读取、诊断 |
+| 4 | 设置背景材料 | solver background get/set | 端到端 |
+| 5 | 设置边界条件 | boundary get/set | 端到端 |
+| 6 | 优化 PML 参数 | PML get/set/diagnose | 配置、读取、诊断 |
+| 7 | 优化网格 | global mesh、mesh override、mesh diagnose | 配置、读取、诊断 |
+| 8 | 调整 Auto shutoff min | solver shutoff get/set | 配置、读取、诊断 |
+| 9 | 添加光源 | source create/update/get | 端到端 |
+| 10 | 设置入射方向、入射角、偏振角 | source typed properties | 端到端 |
+| 11 | 设置波长/频率范围 | source spectrum get/set | 端到端 |
+| 12 | 添加监视器 | monitor create/update/get | 端到端 |
+| 13 | 添加分析组 | analysis group create/update/get | 端到端 |
+| 14 | 设置物理量和采样点数 | monitor result fields/frequency points get/set | 端到端 |
+| 15 | 优化材料拟合 | material fit get/set/diagnose | 配置、读取、诊断 |
+| 16 | 检查所需内存 | simulation resource estimate | 配置、读取、诊断 |
+| 17 | 添加参数扫描 | Generic SweepPlan | 端到端 |
+| 18 | 运行计算 | synchronous short run；persistent long job | 端到端 |
+| 19 | 分析组脚本后处理 | setup/analysis script；raw hooks | 高级接口 |
+| 20 | 查看计算结果 | result list/describe/read/download/export | 端到端 |
+
+### 通用对象模型
+
+FDTD 对象操作不按每种器件创建独立工具。统一对象 API 覆盖：
+
+- `fdtd_region`
+- `rectangle`
+- `circle`
+- `ring`
+- `polygon`
+- `structure_group`
+- `mesh_override`
+- `plane_source`
+- `mode_source`
+- `gaussian_source`
+- `dipole_source`
+- `dft_monitor`
+- `power_monitor`
+- `time_monitor`
+- `index_monitor`
+- `analysis_group`
+
+所有对象统一使用：
+
+```text
+create
+→ list
+→ get
+→ update
+→ copy
+→ rename
+→ delete
+→ add/remove from group
+```
+
+对象由稳定唯一 `name` 标识；工具不得依赖 GUI 当前选中对象。更新和读取使用结构化 `properties`，属性名保持 Lumerical v242 canonical naming，并在返回值中给出规范化后的实际属性。
+
+工具职责不重复：
+
+- `fdtd_object_create/update` 直接创建和更新 geometry、group 与 mesh override。
+- source、monitor 和 analysis group 的创建/更新必须走各自 typed facade。
+- `fdtd_object_list/get/copy/rename/delete` 可作用于所有命名对象。
+- 所有 facade 最终复用同一个 Windows object adapter、属性规范化器和错误模型。
+
+### 原子工具设计
+
+为了保持工具面可发现，不为每种对象和每个动作生成独立 MCP tool。交付版使用按领域聚合的 typed tools。
+
+#### 工程和会话
+
+- `fdtd_health`
+- `fdtd_session_start`
+- `fdtd_session_pause`
+- `fdtd_session_close`
+- `fdtd_project_new`
+- `fdtd_project_load`
+- `fdtd_project_save`
+- `fdtd_project_status`
+- `fdtd_switch_to_layout`
+
+#### 通用对象
+
+- `fdtd_object_create(object_type, name, properties)`
+- `fdtd_object_list(scope, object_type)`
+- `fdtd_object_get(name, properties)`
+- `fdtd_object_update(name, properties)`
+- `fdtd_object_copy(name, new_name, transform)`
+- `fdtd_object_rename(name, new_name)`
+- `fdtd_object_delete(name)`
+- `fdtd_group_update(group_name, add, remove)`
+
+typed object tool 必须校验 `object_type`、必填属性、单位、材料引用和稳定名称。未覆盖的特殊属性仍可通过 `properties` 传递，但返回 warning，并在 v242 上执行前先检查属性是否存在。
+
+`fdtd_object_create/update` 的 `object_type` 仅接受 geometry、group 和 mesh override；source、monitor 和 analysis group 输入返回 `use_typed_domain_tool`，并指出应调用的工具。
+
+#### 材料
+
+- `fdtd_material_create`
+- `fdtd_material_list`
+- `fdtd_material_get`
+- `fdtd_material_update`
+- `fdtd_material_assign`
+- `fdtd_material_fit_diagnose`
+
+#### Solver 和精度
+
+- `fdtd_solver_get`
+- `fdtd_solver_update`
+- `fdtd_mesh_diagnose`
+- `fdtd_resource_estimate`
+
+`fdtd_solver_update` 统一覆盖 region、simulation time、background material、boundaries、PML、global mesh、auto shutoff 和 resource 设置；返回变更前后差异。`fdtd_mesh_diagnose` 和 `fdtd_resource_estimate` 不运行求解。
+
+#### Source
+
+- `fdtd_source_create`
+- `fdtd_source_get`
+- `fdtd_source_update`
+
+source typed schema 覆盖 source type、位置、span、注入轴、方向、入射角、偏振角、波长/频率范围和 mode selection。
+
+#### Monitor
+
+- `fdtd_monitor_create`
+- `fdtd_monitor_get`
+- `fdtd_monitor_update`
+
+monitor typed schema 覆盖 monitor type、位置、span、物理量、频率点数、采样方式、down sample 和输出名称。
+
+#### Analysis
+
+- `fdtd_analysis_group_create`
+- `fdtd_analysis_group_get`
+- `fdtd_analysis_group_update`
+
+analysis group schema 覆盖 properties、setup script、analysis script、结果声明和参数声明。
+
+#### Run 和 result
+
+- `fdtd_simulation_run`
+- `fdtd_simulation_status`
+- `fdtd_result_list`
+- `fdtd_result_describe`
+- `fdtd_result_read`
+- `fdtd_results_download`
+- `fdtd_export_gds`
+- `fdtd_export_data`
+
+`fdtd_simulation_run` 只用于明确标记为短任务的当前模型同步运行。预计超过 30 秒、批量任务或 SweepPlan 必须走持久 `/jobs/*`。
+
+`fdtd_result_read` 返回 JSON 可表达的标量、数组和 dataset metadata。大数组超过响应预算时写入 job/results 文件并返回下载路径，不把无限数据塞进 MCP 上下文。
+
+#### Raw capability
+
+- `fdtd_eval`
+- `fdtd_getv`
+- `fdtd_setv`
+
+raw 工具默认开启，是极特殊命令的逃生口，不替代红色和橙色步骤的 typed tools。
+
+### 编译、预览与执行
+
+所有改变模型的 typed tools支持 `dry_run`：
+
+- `dry_run=true`：返回拟执行的 Lumerical script、目标对象、属性、warnings 和 script SHA-256，不连接或修改 FDTD。
+- `dry_run=false`：通过 API v1 执行，并返回执行后读取的实际对象状态。
+
+批量结构创建优先使用 DeviceRecipe 的 compile → confirm → build，不要求 Agent 连续调用几十次对象工具。原子工具用于探索、调试、人工式搭建和 Recipe/Skill 原型化。
+
+新建工程具有额外保护：
+
+- 当前模型存在未保存变更时，`fdtd_project_new` 默认拒绝。
+- 只有 `discard_unsaved=true` 才允许清空。
+- 返回值明确说明原模型路径、dirty 状态和是否发生清空。
+
+### API v1 路由分组
+
+通用闭环至少增加以下路由组：
+
+```text
+/project/new
+/project/status
+/model/load
+/model/save
+/model/layout
+
+/objects
+/objects/<name>
+/objects/<name>/copy
+/objects/<name>/rename
+/groups/<name>/members
+
+/materials
+/materials/<id>
+/materials/<id>/fit-diagnostics
+
+/solver
+/solver/mesh-diagnostics
+/solver/resource-estimate
+
+/sources
+/sources/<name>
+/monitors
+/monitors/<name>
+/analysis-groups
+/analysis-groups/<name>
+
+/simulation/run
+/simulation/status
+/results
+/results/<object>
+/results/<object>/<result>
+/results/files/<path>
+```
+
+每个变更路由接受 `dry_run`，成功和失败继续使用 API v1 envelope。对象、source、monitor 和 analysis group 路由必须在响应中回读实际状态，而不是只返回“命令已发送”。
+
+### 能力沉淀
+
+```text
+原子工具成功搭建一次器件
+→ 导出/整理 DeviceRecipe
+→ Recipe 加入参数来源、假设和验收
+→ Generic SweepPlan 复用参数
+→ 高频稳定流程沉淀为 Skill
+```
+
+Skill 只固化：
+
+- 何时使用。
+- 论文参数如何映射到 Recipe。
+- 推荐建模顺序。
+- 验证和故障排除。
+- 可复用 Recipe/SweepPlan 模板。
+
+Skill 不复制 RPC 或 compiler 实现。
 
 ## 论文复现与自然语言职责边界
 
@@ -534,27 +856,77 @@ metasurface SimulationPlan
 
 ## MCP 工具面
 
-交付版默认注册 38 个工具。
+交付版默认注册 69 个工具。工具按领域聚合；对象类型和属性通过参数表达，不为每种结构复制 CRUD 工具。
 
-### Session
+### Session and project
 
 - `fdtd_health`
 - `fdtd_session_start`
 - `fdtd_session_pause`
 - `fdtd_session_close`
+- `fdtd_project_new`
+- `fdtd_project_load`
+- `fdtd_project_save`
+- `fdtd_project_status`
+- `fdtd_switch_to_layout`
 
-### Model
+### Generic objects
 
-- `fdtd_save`
-- `fdtd_load`
+- `fdtd_object_create`
+- `fdtd_object_list`
+- `fdtd_object_get`
+- `fdtd_object_update`
+- `fdtd_object_copy`
+- `fdtd_object_rename`
+- `fdtd_object_delete`
+- `fdtd_group_update`
 
-### Geometry
+### Materials
 
-- `fdtd_add_fdtd_region`
-- `fdtd_add_rect`
-- `fdtd_add_circle`
+- `fdtd_material_create`
+- `fdtd_material_list`
+- `fdtd_material_get`
+- `fdtd_material_update`
+- `fdtd_material_assign`
+- `fdtd_material_fit_diagnose`
 
-### Debug
+### Solver and precision
+
+- `fdtd_solver_get`
+- `fdtd_solver_update`
+- `fdtd_mesh_diagnose`
+- `fdtd_resource_estimate`
+
+### Sources
+
+- `fdtd_source_create`
+- `fdtd_source_get`
+- `fdtd_source_update`
+
+### Monitors
+
+- `fdtd_monitor_create`
+- `fdtd_monitor_get`
+- `fdtd_monitor_update`
+
+### Analysis groups
+
+- `fdtd_analysis_group_create`
+- `fdtd_analysis_group_get`
+- `fdtd_analysis_group_update`
+
+### Simulation, results, and export
+
+- `fdtd_simulation_run`
+- `fdtd_simulation_status`
+- `fdtd_result_list`
+- `fdtd_result_describe`
+- `fdtd_result_read`
+- `fdtd_results_download`
+- `fdtd_export_gds`
+- `fdtd_export_data`
+
+### Raw capability
 
 - `fdtd_eval`
 - `fdtd_getv`
@@ -597,13 +969,6 @@ Debug 工具默认开启。它们用于执行 typed tools 尚未覆盖的 Lumeri
 - `fdtd_metasurface_sweep_plan`
 - `fdtd_metasurface_sweep_start`
 
-### Results and export
-
-- `fdtd_results_list`
-- `fdtd_results_download`
-- `fdtd_export_gds`
-- `fdtd_export_data`
-
 ### Knowledge
 
 - `fdtd_device_template`
@@ -613,15 +978,26 @@ Debug 工具默认开启。它们用于执行 typed tools 尚未覆盖的 Lumeri
 
 ### 不再注册的工具
 
-以下 legacy 工具从交付版 MCP 注册表移除：
+以下现有低层、重复或 legacy 工具从交付版 MCP 注册表移除，由上述通用工具替代：
 
+- `fdtd_save`
+- `fdtd_load`
+- `fdtd_add_fdtd_region`
+- `fdtd_add_rect`
+- `fdtd_add_circle`
+- `fdtd_results_list`
 - `fdtd_sweep_config_get`
 - `fdtd_sweep_config_set`
 - `fdtd_sweep_run`
 - `fdtd_sweep_status`
 - `fdtd_sweep_monitor`
 
-对应 Python 兼容代码可以保留一轮版本，但不得出现在 `tools/list` 中，也不得出现在新人使用指南的推荐路径中。
+对应 Python 兼容代码可以保留一轮版本，但不得出现在 `tools/list` 中，也不得出现在新人使用指南的推荐路径中。迁移映射：
+
+- `fdtd_save/load` → `fdtd_project_save/load`
+- `fdtd_add_*` → `fdtd_object_create`
+- `fdtd_results_list` → `fdtd_result_list`
+- `fdtd_sweep_*` → Generic SweepPlan 或 Persistent Jobs
 
 ## Mac 部署
 
@@ -935,8 +1311,9 @@ DeviceRecipe + SweepPlan
 - 运行时依赖和测试依赖分离。
 - Mac、Windows 安装/管理脚本都支持 `--help` 或等价帮助。
 - 配置模板不包含开发机固定绝对路径。
-- `tools/list` 精确返回本 spec 的 38 个工具。
+- `tools/list` 精确返回本 spec 的 69 个工具。
 - `tools/list` 不包含任何 `fdtd_sweep_*`。
+- 20 步能力映射中的每一步都关联至少一个注册工具和至少一个契约测试。
 
 ### 2. Mac MCP 协议验收
 
@@ -945,10 +1322,14 @@ DeviceRecipe + SweepPlan
 1. `initialize`
 2. `tools/list`
 3. `tools/call(fdtd_health)`
-4. `tools/call(fdtd_device_recipe_validate)`
-5. `tools/call(fdtd_device_recipe_compile)`
-6. `tools/call(fdtd_generic_sweep_plan)`
-7. `tools/call(fdtd_generic_sweep_start)`，请求为 mock
+4. `tools/call(fdtd_project_status)`
+5. `tools/call(fdtd_object_create)`，`dry_run=true`
+6. `tools/call(fdtd_source_create)`，`dry_run=true`
+7. `tools/call(fdtd_monitor_create)`，`dry_run=true`
+8. `tools/call(fdtd_device_recipe_validate)`
+9. `tools/call(fdtd_device_recipe_compile)`
+10. `tools/call(fdtd_generic_sweep_plan)`
+11. `tools/call(fdtd_generic_sweep_start)`，请求为 mock
 
 协议测试不得通过直接导入 Python 函数代替 stdio。
 
@@ -974,9 +1355,49 @@ DeviceRecipe + SweepPlan
 - `plan` 或 `mock` job 返回稳定 `job_id`。
 - job 的 manifest、status、summary 和 task 文件落盘到 `%LOCALAPPDATA%\fdtd-mcp\jobs`。
 - mock 终态可发送飞书通知。
-- 全流程不启动真实 FDTD 求解，不产生物理结论。
+- Recipe/SweepPlan 全流程不启动真实 FDTD 求解，不产生物理结论。
 
-### 6. 可迁移验收
+### 6. 通用闭环契约验收
+
+使用注入式 fake lumapi 覆盖完整 20 步：
+
+- 新建工程、创建几何、材料分配。
+- solver 范围、时间、背景、boundary、PML、mesh、shutoff。
+- source 的方向、角度、偏振和频谱。
+- monitor 的物理量、采样和频率点。
+- analysis group 及脚本。
+- 材料拟合诊断和内存预估。
+- SweepPlan task 展开。
+- simulation run/status。
+- result list/describe/read/download/export。
+
+测试必须验证工具 → RpcClient → API v1 route → adapter → fake lumapi 的真实调用链，不能只断言独立 helper。
+
+### 7. Windows 最小 solver smoke
+
+允许并要求一次固定的低成本技术 smoke，用于证明“运行仿真”和“拉取结果”不是仅存在于 fake backend：
+
+1. 创建新工程。
+2. 创建一个固定简单结构及材料。
+3. 创建小型 FDTD region，使用固定低成本网格和短仿真时间。
+4. 设置背景、边界和 auto shutoff。
+5. 添加一个固定 source。
+6. 添加一个固定 monitor。
+7. 添加一个最小 analysis group。
+8. 保存 `.fsp`。
+9. 执行单次 `fdtd_simulation_run`。
+10. 使用 `fdtd_result_list/describe/read` 读取一个结果。
+11. 下载结构化结果文件。
+12. 关闭 session。
+
+边界：
+
+- 只有 1 个模型、1 次求解、无参数扫描、无优化。
+- 参数固定在仓库 smoke fixture 中。
+- 结果只检查字段存在、数组非空和 API 数据流，不设物理性能阈值。
+- 报告必须标记 `technical_smoke=true`、`physical_conclusion=false`。
+
+### 8. 可迁移验收
 
 将同一项目目录通过 ToDesk 复制到第二台 Windows 后：
 
@@ -991,7 +1412,8 @@ DeviceRecipe + SweepPlan
 实现完成后，当前入口文档必须面向 MCP 交付重写：
 
 - `README.md`：五分钟安装、两种连接方式、三客户端入口、快速验收。
-- `docs/MCP_USER_GUIDE.md`：完整工具目录、debug 工具边界、DeviceRecipe、Generic SweepPlan、参数文件验证和客户端配置。
+- `docs/MCP_USER_GUIDE.md`：完整工具目录、20 步通用流程、debug 工具边界、DeviceRecipe、Generic SweepPlan、参数文件验证和客户端配置。
+- `docs/FDTD_OPERATIONS_V1.md`：project、object、material、solver、source、monitor、analysis、run 和 result 的 typed schema、属性映射和示例。
 - `docs/DEVICE_RECIPE_V1.md`：Recipe schema、原语、来源追踪、表达式、raw hooks 和完整示例。
 - `docs/GENERIC_SWEEP_PLAN_V1.md`：SweepPlan schema、采样、任务顺序、预算、审批和完整示例。
 - `docs/WINDOWS_RUNBOOK.md`：首次配置、双击管理、状态目录、防火墙和迁移。
