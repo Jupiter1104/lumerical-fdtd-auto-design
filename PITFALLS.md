@@ -213,3 +213,10 @@
 - 根因：Windows 本机验证常会做小幅现场调整，如果不回写 Mac 主仓库和测试，下一位 Agent `git pull` 后无法复现同一通过条件。
 - 修复：把经过实测的 `30s/600s` 固化到 `minimal_solver_smoke.py` 和静态测试；`5001` 仅作为命令行 `--rpc` workaround，不改默认端口。
 - 预防：每次 Windows manual smoke 通过后，审查报告里的“本次修改”必须逐项对照 git diff；属于通用容差的改入仓库，属于现场绕行的只写入日志。
+
+## 2026-06-20 - Object Library script_id 不可由 Agent 猜测
+
+- 现象：用户要求“添加分析组时优先使用官方自带分析组”，容易把官方示例主题误写成可直接 `addobject("...")` 的 `script_id`。
+- 根因：Ansys 官网会列出 Object Library 相关分析主题，但真实 `addobject("script_id")` 取决于目标 Lumerical 版本的 Object Library ID；主题名不等于脚本 ID。
+- 修复：MCP/RPC 只在用户或运行时枚举提供 `script_id` 时使用 `addobject`；`prefer_builtin` 无 ID 则回退自定义 group，`require_builtin` 无 ID 则结构化报错。
+- 预防：后续如果要自动匹配官方库，先在 Windows v242 运行只读 `addobject;` 枚举并 smoke 插入，再把确认 ID 写入 registry。

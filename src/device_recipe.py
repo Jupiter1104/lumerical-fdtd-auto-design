@@ -815,6 +815,9 @@ def _normalize_optional_list(
                 "type": item.get("type", ""),
                 "name": item.get("name", ""),
                 "properties": dict(item.get("properties", {})),
+                "prefer_builtin": bool(item.get("prefer_builtin", False)),
+                "require_builtin": bool(item.get("require_builtin", False)),
+                "script_id": item.get("script_id", ""),
             })
     return result
 
@@ -1033,6 +1036,55 @@ def _generate_monitors_script(
     return lines, lifecycle
 
 
+def _generate_analysis_groups_script(
+    analysis_groups: List[dict], param_values: dict
+) -> Tuple[List[str], List[dict]]:
+    """Generate analysis group section."""
+    lines: List[str] = []
+    lifecycle: List[dict] = []
+
+    if not analysis_groups:
+        lines.append("# === Analysis Groups ===")
+        lines.append("# No analysis groups defined")
+        lines.append("")
+        return lines, lifecycle
+
+    lines.append("# === Analysis Groups ===")
+    for group in analysis_groups:
+        name = group.get("name", "")
+        group_type = group.get("type", "")
+        props = group.get("properties", {})
+        script_id = group.get("script_id", "")
+        prefer_builtin = bool(group.get("prefer_builtin", False))
+        require_builtin = bool(group.get("require_builtin", False))
+        use_builtin = bool(script_id and (prefer_builtin or require_builtin))
+        fallback_used = bool(prefer_builtin and not script_id)
+
+        lines.append("")
+        lines.append(f"# Analysis Group: {name} ({group_type})")
+        if use_builtin:
+            lines.append(f"addobject({quote_lsf_string(script_id)});")
+            source = "builtin"
+        else:
+            lines.append("addanalysisgroup;")
+            source = "custom"
+        lines.append(f'set("name", {quote_lsf_string(name)});')
+        for prop_name, prop_value in props.items():
+            resolved = _compile_expression(prop_value, param_values)
+            lines.append(f'set({quote_lsf_string(prop_name)}, {resolved});')
+
+        lifecycle.append({
+            "name": name,
+            "type": "analysis_group",
+            "source": source,
+            "script_id": script_id if source == "builtin" else "",
+            "fallback_used": fallback_used,
+        })
+
+    lines.append("")
+    return lines, lifecycle
+
+
 def compile_recipe(recipe: dict) -> dict:
     """Validate, normalize, and compile a device recipe.
 
@@ -1148,7 +1200,14 @@ def compile_recipe(recipe: dict) -> dict:
     script_parts.extend(mon_lines)
     object_lifecycle.extend(mon_lifecycle)
 
-    # 10. save model
+    # 10. analysis groups
+    ag_lines, ag_lifecycle = _generate_analysis_groups_script(
+        normalized.get("analysis_groups", []), param_values
+    )
+    script_parts.extend(ag_lines)
+    object_lifecycle.extend(ag_lifecycle)
+
+    # 11. save model
     script_parts.append("# === Save Model ===")
     script_parts.append('save("device_model");')
     script_parts.append("")

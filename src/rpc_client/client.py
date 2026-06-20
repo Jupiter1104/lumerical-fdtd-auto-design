@@ -345,7 +345,13 @@ class RpcClient:
     # Analysis group management (Task 1 stubs)
 
     def analysis_group_create(
-        self, name: str, properties: dict, dry_run: bool = False
+        self,
+        name: str,
+        properties: dict,
+        dry_run: bool = False,
+        prefer_builtin: bool = False,
+        require_builtin: bool = False,
+        script_id: str = "",
     ) -> dict:
         return self._post(
             "/analysis-groups",
@@ -353,6 +359,9 @@ class RpcClient:
                 "name": name,
                 "properties": properties,
                 "dry_run": dry_run,
+                "prefer_builtin": prefer_builtin,
+                "require_builtin": require_builtin,
+                "script_id": script_id,
             },
         )
 

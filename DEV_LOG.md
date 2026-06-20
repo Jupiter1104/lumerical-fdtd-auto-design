@@ -769,3 +769,9 @@
 - 结论：自定义空白 group 用 `addanalysisgroup`；官方 Object Library 预定义对象/analysis group 用 `addobject("script_ID")`；`addobject;` 可在目标版本枚举可用对象名。
 - 修改：新增 `src/knowledge/prompts/lumerical_analysis_groups.md`，并同步 `lumerical_fdtd_automation_manual.md`、`lumerical_command_index.md`、`source_map.md`。
 - 后续：实现 MCP 行为前，应先在 Windows v242 侧做只读 `addobject;` 枚举，把确认过的 `script_ID` 写入 registry；未确认 ID 不得由 Agent 猜测。
+
+## 2026-06-20 - MCP analysis group 官方库优先行为
+
+- 目标：实现 `fdtd_analysis_group_create` 在用户提供已确认 `script_id` 时优先走官方 Object Library `addobject("script_id")`，否则安全回退自定义 `addanalysisgroup`。
+- 范围：RPC `/analysis-groups`、Mac `RpcClient`、MCP wrapper 和 DeviceRecipe 编译透传 `prefer_builtin`、`require_builtin`、`script_id`。
+- 约束：不新增 MCP 工具，不猜测官方库 ID，不启动 FDTD solve；`require_builtin=true` 且无 `script_id` 返回结构化错误。

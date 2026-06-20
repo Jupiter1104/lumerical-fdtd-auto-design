@@ -172,7 +172,8 @@ def fake_http_server():
         ("monitor_get", ("mon",), "GET", "/monitors/mon", None),
         ("monitor_update", ("mon", {"frequency points": 10}), "POST", "/monitors/mon/update", {"frequency points": 10}),
         # --- v1 typed API: analysis groups ---
-        ("analysis_group_create", ("ag", {"script": "T=1;"}, True), "POST", "/analysis-groups", {"name": "ag", "properties": {"script": "T=1;"}, "dry_run": True}),
+        ("analysis_group_create", ("ag", {"script": "T=1;"}, True), "POST", "/analysis-groups", {"name": "ag", "properties": {"script": "T=1;"}, "dry_run": True, "prefer_builtin": False, "require_builtin": False, "script_id": ""}),
+        ("analysis_group_create", ("ag", {}, True, True, False, "power_transmission_box"), "POST", "/analysis-groups", {"name": "ag", "properties": {}, "dry_run": True, "prefer_builtin": True, "require_builtin": False, "script_id": "power_transmission_box"}),
         ("analysis_group_get", ("ag",), "GET", "/analysis-groups/ag", None),
         ("analysis_group_update", ("ag", {"script": "T=0.5;"}), "POST", "/analysis-groups/ag/update", {"script": "T=0.5;"}),
         # --- v1 typed API: results ---

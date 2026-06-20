@@ -970,6 +970,9 @@ def create_app(
                 name=_required(data, "name"),
                 properties=data.get("properties", {}),
                 dry_run=data.get("dry_run", False),
+                prefer_builtin=data.get("prefer_builtin", False),
+                require_builtin=data.get("require_builtin", False),
+                script_id=data.get("script_id", ""),
             )
         )
 

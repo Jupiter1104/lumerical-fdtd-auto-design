@@ -128,6 +128,21 @@ def _compile_monitor_create_script(
     return "\n".join(lines)
 
 
+def _compile_builtin_analysis_group_script(
+    script_id: str,
+    name: str,
+    properties: dict[str, object],
+) -> str:
+    """Build a script that inserts a verified Object Library analysis group."""
+    lines = [
+        f"addobject({format_lsf_value(script_id)});",
+        f'set("name",{format_lsf_value(name)});',
+    ]
+    for key in sorted(properties):
+        lines.append(f'set("{key}",{format_lsf_value(properties[key])});')
+    return "\n".join(lines)
+
+
 def _adapter_error_from_validation(validation: dict) -> AdapterError:
     """Convert a validation error dict from *validate_object_type* to an AdapterError."""
     error = validation.get("error", {})
@@ -590,13 +605,39 @@ class WindowsFdtdAdapter:
         name: str,
         properties: dict[str, object] | None = None,
         dry_run: bool = False,
+        prefer_builtin: bool = False,
+        require_builtin: bool = False,
+        script_id: str = "",
     ) -> dict:
         """Create an analysis group."""
-        script = _compile_create_script(
-            "addanalysisgroup;", name, properties or {},
-        )
+        props = properties or {}
+        requested_builtin = prefer_builtin or require_builtin
+        if require_builtin and not script_id:
+            raise AdapterError(
+                "builtin_analysis_group_required",
+                "require_builtin=true requires a verified Object Library script_id.",
+                400,
+                {"name": name},
+            )
+
+        if requested_builtin and script_id:
+            script = _compile_builtin_analysis_group_script(script_id, name, props)
+            source = "builtin"
+            fallback_used = False
+        else:
+            script = _compile_create_script("addanalysisgroup;", name, props)
+            source = "custom"
+            fallback_used = bool(prefer_builtin and not script_id)
+
         return self._execute_or_dry_run(
-            script, dry_run, extra={"name": name},
+            script,
+            dry_run,
+            extra={
+                "name": name,
+                "source": source,
+                "script_id": script_id if source == "builtin" else "",
+                "fallback_used": fallback_used,
+            },
         )
 
     def analysis_group_get(self, name: str) -> dict:

@@ -70,6 +70,28 @@ Geometry 属性支持受限表达式：
 - **run** 模式：hooks 正常执行
 - hooks 的 SHA-256 指纹记录在 `raw_hook_hashes` 中
 
+## Analysis Groups
+
+`analysis_groups[]` 支持两种创建路径：
+
+```json
+{
+  "type": "analysis_group",
+  "name": "analysis_builtin",
+  "prefer_builtin": true,
+  "require_builtin": false,
+  "script_id": "power_transmission_box",
+  "properties": {}
+}
+```
+
+- 默认：使用 `addanalysisgroup` 创建自定义空白 analysis group。
+- `prefer_builtin=true` 且提供 `script_id`：使用官方 Object Library `addobject("script_id")`。
+- `prefer_builtin=true` 但没有 `script_id`：回退到自定义 `addanalysisgroup`。
+- `require_builtin=true`：调用 RPC/MCP 创建时必须提供已验证 `script_id`；不要由 Agent 猜测 ID。
+
+`script_id` 应来自 Ansys 官方文档或目标 Windows v242 中 `addobject;` 的运行时枚举。
+
 ## Compiler Pipeline
 
 ```
@@ -82,6 +104,7 @@ pre_geometry (raw hook)
 → mesh
 → sources
 → monitors
+→ analysis groups
 → save model
 ```
 

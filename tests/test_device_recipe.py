@@ -395,6 +395,41 @@ def test_compile_with_sources_and_monitors():
     assert "monitor_01" in obj_names
 
 
+def test_compile_with_builtin_analysis_group_uses_addobject():
+    """Builtin analysis groups compile through Object Library addobject."""
+    recipe = {
+        **MINIMAL_RECIPE,
+        "analysis_groups": [
+            {
+                "type": "analysis_group",
+                "name": "analysis_builtin",
+                "script_id": "power_transmission_box",
+                "prefer_builtin": True,
+                "properties": {"x": 0},
+            }
+        ],
+    }
+
+    result = compile_recipe(recipe)
+
+    assert result["ok"] is True
+    assert 'addobject("power_transmission_box");' in result["script"]
+    assert 'set("name", "analysis_builtin");' in result["script"]
+    assert 'set("x", 0);' in result["script"]
+    assert "addanalysisgroup;" not in result["script"]
+    lifecycle = [
+        item for item in result["object_lifecycle"]
+        if item["name"] == "analysis_builtin"
+    ]
+    assert lifecycle == [{
+        "name": "analysis_builtin",
+        "type": "analysis_group",
+        "source": "builtin",
+        "script_id": "power_transmission_box",
+        "fallback_used": False,
+    }]
+
+
 def test_compile_includes_assumptions_report():
     """Compilation includes the assumptions report with reasons."""
     result = compile_recipe(MINIMAL_RECIPE)

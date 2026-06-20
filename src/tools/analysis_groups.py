@@ -14,12 +14,25 @@ def register_analysis_group_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         Create an analysis group (scripted post-processing).
 
         Args:
-            body: Analysis group specification.
+            body: Analysis group specification. Optional official Object
+                Library fields:
+                prefer_builtin: if true, use addobject(script_id) when
+                    script_id is provided; otherwise fall back to custom.
+                require_builtin: if true, fail unless script_id is provided.
+                script_id: verified Object Library script ID from docs or
+                    target-version addobject enumeration.
 
         Returns:
             Creation confirmation with group name.
         """
-        return rpc.analysis_group_create(body)
+        return rpc.analysis_group_create(
+            name=body["name"],
+            properties=body.get("properties", {}),
+            dry_run=body.get("dry_run", False),
+            prefer_builtin=body.get("prefer_builtin", False),
+            require_builtin=body.get("require_builtin", False),
+            script_id=body.get("script_id", ""),
+        )
 
     @mcp.tool()
     def fdtd_analysis_group_get(name: str) -> dict:
