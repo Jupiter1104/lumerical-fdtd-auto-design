@@ -119,20 +119,22 @@ class ObjectLibraryCatalog:
             return {**payload, "catalog_cached": False}
 
     def get_probe(self, script_id: str) -> dict | None:
-        if self._catalog is None:
-            return None
-        return self._catalog.get("probes", {}).get(script_id)
+        with self._lock:
+            if self._catalog is None:
+                return None
+            return self._catalog.get("probes", {}).get(script_id)
 
     def put_probe(self, script_id: str, probe: dict) -> dict:
-        if self._catalog is None:
-            raise RuntimeError("Object Library catalog is not initialized.")
-        self._catalog.setdefault("probes", {})[script_id] = {
-            **probe,
-            "probed_at": _utc_now(),
-        }
-        if self._path is not None:
-            self._write_atomic(self._path, self._catalog)
-        return self._catalog["probes"][script_id]
+        with self._lock:
+            if self._catalog is None:
+                raise RuntimeError("Object Library catalog is not initialized.")
+            self._catalog.setdefault("probes", {})[script_id] = {
+                **probe,
+                "probed_at": _utc_now(),
+            }
+            if self._path is not None:
+                self._write_atomic(self._path, self._catalog)
+            return self._catalog["probes"][script_id]
 
     def data(self) -> dict:
         return dict(self._catalog or {})
