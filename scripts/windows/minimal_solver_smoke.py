@@ -8,7 +8,7 @@ This is a TECHNICAL SMOKE test only — it does NOT produce physical conclusions
 The report MUST be marked technical_smoke=true, physical_conclusion=false.
 
 Usage (Windows CMD):
-    "F:\Program Files\Lumerical\v242\python\python.exe" scripts\windows\minimal_solver_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\fdtd-mcp\smoke"
+    "F:\\Program Files\\Lumerical\\v242\\python\\python.exe" scripts\\windows\\minimal_solver_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\\fdtd-mcp\\smoke"
 """
 
 from __future__ import annotations

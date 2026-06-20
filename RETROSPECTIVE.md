@@ -31,7 +31,52 @@
 
 ## 2026-06-19 - 最终目标差距快照
 
-- 有效做法：先把“自然语言 → SimulationPlan → 审批 → 真实 job → evidence review”闭环在 metasurface unit-cell 上跑通，再扩大设计空间。Stage C1/C2 已证明软件链可审计，C3 plan 将进入 25-task 有界探索。
+- 有效做法：先把“自然语言 → SimulationPlan → 审批 → 真实 job → evidence review”闭环在 metasurface unit-cell 上跑通，再扩大设计空间。Stage C1/C2 已证明软件链可审计，C3 已形成 25-task 有界审批包。
 - 无效做法：把 2×2 结果误当成物理设计库。C2 的 phase span 只有约 `1.3273 rad`，只能证明自动化链路，不足以支撑最终 2π phase library。
 - 可复用经验：后续每次扩大 sweep 或改变物理设置，都应先形成新的 packet 和人工审批；质量报告、物理审核和下一轮建议必须分离。
-- 下一步调整：短期目标是完成 C3/C4/C5（生产扫参审批包、真实 25-task sweep、phase/transmission 设计级分析）。中期目标是补 typed modeling recipes，让“自然语言自动建模”从模板参数化走向更多器件类型。
+- 下一步调整：基础设施已够用，不再无依据扩建。短期等待 C3 exact packet 批准后完成 C4/C5（真实 25-task sweep、phase/transmission 设计级分析）；中期补 typed modeling recipes。
+
+## 2026-06-20 - 0.1.0 MCP 交付验收
+
+- 有效做法：
+  - Subagent-driven development：每个 Task 独立的 implementer + reviewer 循环，16 个 Task 全部通过。
+  - TDD 先行：每个 Task 先写失败测试，再实现到通过，确保契约锁定。
+  - Plan/mock 全离线验证：69 工具注册、DeviceRecipe 编译器、Generic SweepPlan、持久 job、20 步 fake-lumapi 测试均在无 Windows/Lumerical 环境下通过。
+- 无效做法：
+  - 后端分类器间歇不可用导致部分 review subagent 无法派遣，改为手动审查。
+  - 部分 Task 执行时间较长（Task 8 配方扫参 job 支持）。
+- 可复用经验：
+  - 先锁契约（Task 1 69-tool registry）再实现，避免后续工具数漂移。
+  - 三层测试（unit/fake-backend/MCP-stdio）确保各层独立可验证。
+  - 指纹门（DeviceRecipe compile_fingerprint、SweepPlan packet_fingerprint）防止篡改请求。
+- 下一步调整：
+  - Windows 手动 smoke：运行 `scripts\windows\minimal_solver_smoke.py` 验证真实 RPC→lumapi→solve 链路。
+  - 真实 physical-use workflow：在 C3 packet 批准后进入 C4/C5 真实 sweep。
+  - Type modeling recipes 补充更多器件类型。
+
+### 离线验证
+
+```bash
+.venv/bin/python -m compileall -q rpc_server.py src scripts tests  # EXIT 0
+.venv/bin/python -m pytest -q                                     # 530 passed
+```
+
+### Windows solver smoke 待执行
+
+```cmd
+"F:\Program Files\Lumerical\v242\python\python.exe" scripts\windows\minimal_solver_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\fdtd-mcp\smoke"
+```
+
+预期：`technical_smoke=true`，`physical_conclusion=false`。
+
+### Known Non-Goals（仍为非目标）
+
+- 不启动 C4/C5 真实 sweep（需人工批准 exact C3 packet）
+- 不验证 2π phase library 物理结论
+- 不做 RPC Server 公网暴露/强安全认证
+- 不做多机集群调度
+- 不实现 COMSOL/CST 等其他仿真工具
+
+### 提交记录
+
+16 个 Task 对应 12 个 commit，详见 `git log --oneline`。
