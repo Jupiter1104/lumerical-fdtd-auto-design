@@ -7,6 +7,19 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+
+# Load rpc.env from %LOCALAPPDATA%\fdtd-mcp\config\ if it exists
+$StateRoot = Join-Path $env:LOCALAPPDATA "fdtd-mcp"
+$ConfigDir = Join-Path $StateRoot "config"
+$ConfigFile = Join-Path $ConfigDir "rpc.env"
+if (Test-Path $ConfigFile) {
+    Get-Content $ConfigFile | ForEach-Object {
+        if ($_ -match '^\s*([A-Z_]+)\s*=\s*(.+)\s*$' -and $matches[1] -notmatch '^#') {
+            [Environment]::SetEnvironmentVariable($matches[1], $matches[2].Trim(), "Process")
+        }
+    }
+}
+
 $Python = if ($env:FDTD_PYTHON) {
     $env:FDTD_PYTHON
 } else {
@@ -20,9 +33,10 @@ $Port = if ($env:FDTD_RPC_PORT) {
     5000
 }
 
-$RuntimeDir = Join-Path $ProjectRoot "runtime"
-$LogDir = Join-Path $ProjectRoot "logs"
-$PidFile = Join-Path $RuntimeDir "rpc_server.pid"
+# Use %LOCALAPPDATA%\fdtd-mcp\ for runtime state (PID, logs)
+$RunDir = Join-Path $StateRoot "run"
+$LogDir = Join-Path $StateRoot "logs"
+$PidFile = Join-Path $RunDir "rpc_server.pid"
 $StdoutLog = Join-Path $LogDir "rpc_server.out.log"
 $StderrLog = Join-Path $LogDir "rpc_server.err.log"
 $ServerScript = Join-Path $ProjectRoot "rpc_server.py"
@@ -82,7 +96,7 @@ function Start-Rpc {
         throw "Port $Port is already in use by PID $($listener.OwningProcess)."
     }
 
-    New-Item -ItemType Directory -Force -Path $RuntimeDir, $LogDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $RunDir, $LogDir | Out-Null
     Write-Host "Starting FDTD RPC v1 on 127.0.0.1:$Port..."
 
     $arguments = @(
