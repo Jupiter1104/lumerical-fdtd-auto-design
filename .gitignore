@@ -43,3 +43,7 @@ Dephasing.svg
 templates/metasurface/base_model.inventory.json
 templates/metasurface/base_model.contract.json
 templates/metasurface/base_model.probe.json
+
+# Installer / config writer temp and backup files
+*.tmp
+*.backup-*
