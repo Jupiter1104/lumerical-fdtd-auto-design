@@ -1,5 +1,7 @@
 """Compile normalized metasurface SimulationPlans to RPC API v1 jobs."""
 
+from ..simulation_plan import metasurface_plan_to_recipe_sweep
+
 
 def compile_metasurface_plan(
     normalized_plan: dict,
@@ -40,4 +42,14 @@ def compile_metasurface_plan(
             "approved": True,
             "approved_for": "real_run",
         }
+
+    # ── Bridge: attach generic DeviceRecipe + SweepPlan fingerprints ─────
+    bridge = metasurface_plan_to_recipe_sweep(normalized_plan)
+    request["generic_recipe_fingerprint"] = bridge.get(
+        "recipe_fingerprint", ""
+    )
+    request["generic_sweep_fingerprint"] = bridge.get(
+        "sweep_fingerprint", ""
+    )
+
     return request

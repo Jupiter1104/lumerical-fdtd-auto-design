@@ -633,23 +633,34 @@ def validate_simulation_plan(plan: dict) -> dict:
                 "details": copy.deepcopy(requirements),
             }
         )
+    # ── Bridge: convert to generic DeviceRecipe + SweepPlan ──────────────
+    bridge = metasurface_plan_to_recipe_sweep(normalized)
+    generic_recipe_fingerprint = bridge.get("recipe_fingerprint", "")
+    generic_sweep_fingerprint = bridge.get("sweep_fingerprint", "")
+
+    approval = _approval_summary(
+        normalized,
+        fingerprint,
+        task_count,
+        defaults_applied,
+        assumptions,
+        warnings,
+    )
+    approval["generic_recipe_fingerprint"] = generic_recipe_fingerprint
+    approval["generic_sweep_fingerprint"] = generic_sweep_fingerprint
+
     return {
         "ok": True,
         "normalized_plan": normalized,
         "plan_fingerprint": fingerprint,
+        "generic_recipe_fingerprint": generic_recipe_fingerprint,
+        "generic_sweep_fingerprint": generic_sweep_fingerprint,
         "task_count": task_count,
         "defaults_applied": defaults_applied,
         "assumptions": assumptions,
         "warnings": warnings,
         "errors": [],
-        "approval_summary": _approval_summary(
-            normalized,
-            fingerprint,
-            task_count,
-            defaults_applied,
-            assumptions,
-            warnings,
-        ),
+        "approval_summary": approval,
     }
 
 
@@ -682,6 +693,174 @@ def _approval_matches(approval, approved_for: str, fingerprint: str) -> bool:
         and approval.get("approved_for") == approved_for
         and approval.get("plan_fingerprint") == fingerprint
     )
+
+
+def metasurface_plan_to_recipe_sweep(plan: dict) -> dict:
+    """Convert a normalized metasurface SimulationPlan to DeviceRecipe + Generic SweepPlan.
+
+    This bridge preserves backward compatibility while internally converting
+    the legacy SimulationPlan format into the generic core representations.
+
+    Args:
+        plan: A **normalized** SimulationPlan dict (the
+            ``normalized_plan`` field returned by :func:`validate_simulation_plan`).
+
+    Returns:
+        A dict with keys:
+
+        * ``recipe`` — the normalized DeviceRecipe (schema 1.0)
+        * ``sweep_plan`` — the Generic SweepPlan specification (schema 1.0)
+        * ``recipe_fingerprint`` — ``sha256:...`` fingerprint of the recipe
+        * ``sweep_fingerprint`` — ``sha256:...`` fingerprint of the sweep plan
+        * ``compatibility`` — metadata about the conversion
+    """
+    from .device_recipe import validate_recipe
+    from .fdtd_schema import fingerprint_json
+    from .generic_sweep import validate_sweep_plan
+
+    sweep = plan["sweep"]
+    axis = sweep["axis"]
+
+    # ── Build recipe parameters ──────────────────────────────────────────
+    parameters: dict = {}
+    sweep_parameters: list = []
+    assumptions: list = []
+
+    # ratio is always a swept parameter
+    ratio_vals = list(sweep["ratio_values"])
+    parameters["ratio"] = {
+        "type": "float",
+        "default": ratio_vals[0],
+        "min": 0.0,
+        "max": 1.0,
+    }
+    sweep_parameters.append({"name": "ratio", "values": ratio_vals})
+    assumptions.append({
+        "parameter": "ratio",
+        "reason": (
+            f"Ratio values from metasurface SimulationPlan: "
+            f"{ratio_vals}"
+        ),
+    })
+
+    if axis == "period":
+        # period is swept; height is fixed
+        period_vals = list(sweep["period_values_m"])
+        parameters["period"] = {
+            "type": "float",
+            "default": period_vals[0],
+            "unit": "m",
+        }
+        sweep_parameters.append({"name": "period", "values": period_vals})
+        assumptions.append({
+            "parameter": "period",
+            "reason": (
+                f"Period values from metasurface SimulationPlan: "
+                f"{period_vals}"
+            ),
+        })
+
+        fixed_height = sweep["fixed_height_m"]
+        parameters["height"] = {
+            "type": "float",
+            "default": fixed_height,
+            "unit": "m",
+        }
+        assumptions.append({
+            "parameter": "height",
+            "reason": (
+                f"Fixed height from metasurface SimulationPlan: "
+                f"{fixed_height} m"
+            ),
+        })
+    else:
+        # height is swept; period is fixed
+        height_vals = list(sweep["height_values_m"])
+        parameters["height"] = {
+            "type": "float",
+            "default": height_vals[0],
+            "unit": "m",
+        }
+        sweep_parameters.append({"name": "height", "values": height_vals})
+        assumptions.append({
+            "parameter": "height",
+            "reason": (
+                f"Height values from metasurface SimulationPlan: "
+                f"{height_vals}"
+            ),
+        })
+
+        fixed_period = sweep["fixed_period_m"]
+        parameters["period"] = {
+            "type": "float",
+            "default": fixed_period,
+            "unit": "m",
+        }
+        assumptions.append({
+            "parameter": "period",
+            "reason": (
+                f"Fixed period from metasurface SimulationPlan: "
+                f"{fixed_period} m"
+            ),
+        })
+
+    # ── Build recipe ─────────────────────────────────────────────────────
+    recipe = {
+        "schema_version": "1.0",
+        "parameters": parameters,
+        "assumptions": assumptions,
+        "materials": [
+            {
+                "name": "pillar_material",
+                "type": "Si3N4 (Silicon Nitride) - Philipp",
+                "properties": {},
+            }
+        ],
+        "geometry": [
+            {
+                "type": "rectangle",
+                "name": "pillar",
+                "properties": {
+                    "x span": "${ratio} * ${period}",
+                    "y span": "${ratio} * ${period}",
+                    "z min": 0,
+                    "z max": "${height}",
+                },
+            }
+        ],
+    }
+
+    # ── Validate and fingerprint recipe ──────────────────────────────────
+    recipe_validation = validate_recipe(recipe)
+    recipe_fingerprint = ""
+    normalized_recipe = recipe
+    if recipe_validation["ok"] and "normalized_recipe" in recipe_validation:
+        normalized_recipe = recipe_validation["normalized_recipe"]
+        recipe_fingerprint = fingerprint_json(normalized_recipe)
+
+    # ── Build sweep plan ─────────────────────────────────────────────────
+    sweep_plan = {
+        "schema_version": "1.0",
+        "parameters": sweep_parameters,
+        "max_tasks": MAX_TASKS,
+    }
+
+    # ── Validate and fingerprint sweep plan ──────────────────────────────
+    sweep_validation = validate_sweep_plan(sweep_plan, recipe_fingerprint)
+    sweep_fingerprint = ""
+    if sweep_validation.get("sweep_fingerprint"):
+        sweep_fingerprint = sweep_validation["sweep_fingerprint"]
+
+    return {
+        "recipe": normalized_recipe,
+        "sweep_plan": sweep_plan,
+        "recipe_fingerprint": recipe_fingerprint,
+        "sweep_fingerprint": sweep_fingerprint,
+        "compatibility": {
+            "source": "metasurface SimulationPlan v0.1",
+            "preserves_legacy_fingerprint": True,
+        },
+    }
 
 
 def _requirements_match(requirements: dict, declared: dict) -> bool:

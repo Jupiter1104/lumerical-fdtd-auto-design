@@ -504,3 +504,212 @@ def test_real_approvals_reject_unverified_b1_template_contract():
 
     assert result["ok"] is False
     assert result["error"]["type"] == "template_contract_required"
+
+
+# ============================================================
+# Bridge: metasurface_plan_to_recipe_sweep compatibility tests
+# ============================================================
+
+from src.simulation_plan import metasurface_plan_to_recipe_sweep
+
+
+def test_bridge_produces_valid_device_recipe():
+    """The converted recipe must pass recipe validation."""
+    validated = validate_simulation_plan({})
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+
+    from src.device_recipe import validate_recipe
+
+    result = validate_recipe(bridge["recipe"])
+    assert result["ok"] is True, f"Recipe validation failed: {result.get('errors', [])}"
+    assert bridge["recipe_fingerprint"]
+    assert bridge["recipe_fingerprint"].startswith("sha256:")
+
+
+def test_bridge_produces_valid_sweep_plan():
+    """The converted sweep plan must pass sweep validation."""
+    validated = validate_simulation_plan({})
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+
+    from src.generic_sweep import validate_sweep_plan
+
+    result = validate_sweep_plan(
+        bridge["sweep_plan"], bridge["recipe_fingerprint"]
+    )
+    assert result["ok"] is True, f"Sweep validation failed: {result.get('errors', [])}"
+    assert bridge["sweep_fingerprint"]
+    assert bridge["sweep_fingerprint"].startswith("sha256:")
+
+
+def test_bridge_preserves_ratio_period_height_semantics():
+    """Ratio, period, and height semantics are preserved through conversion."""
+    validated = validate_simulation_plan({})
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+
+    recipe = bridge["recipe"]
+    params = recipe["parameters"]
+
+    assert "ratio" in params
+    assert params["ratio"]["type"] == "float"
+    assert params["ratio"]["default"] == 0.2
+    assert params["ratio"]["max"] == 1.0
+
+    assert "period" in params
+    assert params["period"]["unit"] == "m"
+    assert params["period"]["default"] == 390e-9
+
+    assert "height" in params
+    assert params["height"]["unit"] == "m"
+    assert params["height"]["default"] == 700e-9
+
+    # Verify geometry uses the parameters with correct semantics
+    geo = recipe["geometry"][0]
+    assert geo["type"] == "rectangle"
+    assert geo["name"] == "pillar"
+    assert geo["properties"]["x span"] == "${ratio} * ${period}"
+    assert geo["properties"]["y span"] == "${ratio} * ${period}"
+    assert geo["properties"]["z max"] == "${height}"
+
+    # Sweep plan should have ratio and period (for axis=period)
+    sweep = bridge["sweep_plan"]
+    param_names = [p["name"] for p in sweep["parameters"]]
+    assert param_names == ["ratio", "period"]
+
+
+def test_bridge_preserves_height_axis_semantics():
+    """Height-axis plans correctly swap which parameter is swept vs fixed."""
+    validated = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "height",
+                "ratio_values": [0.3],
+                "height_values_m": [600e-9, 800e-9],
+                "fixed_period_m": 470e-9,
+            }
+        }
+    )
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+
+    recipe = bridge["recipe"]
+    params = recipe["parameters"]
+
+    assert params["height"]["default"] == 600e-9
+    assert params["period"]["default"] == 470e-9
+    assert params["ratio"]["default"] == 0.3
+
+    # Sweep plan should have ratio and height (for axis=height)
+    sweep = bridge["sweep_plan"]
+    param_names = [p["name"] for p in sweep["parameters"]]
+    assert param_names == ["ratio", "height"]
+
+
+def test_bridge_task_count_matches_legacy():
+    """Bridge sweep plan estimates the same task count as legacy."""
+    validated = validate_simulation_plan(
+        {
+            "sweep": {
+                "axis": "period",
+                "ratio_values": [0.2, 0.5, 0.8],
+                "period_values_m": [390e-9, 470e-9, 540e-9],
+                "fixed_height_m": 700e-9,
+            }
+        }
+    )
+    assert validated["task_count"] == 9  # 3 ratio * 3 period
+
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+    from src.generic_sweep import validate_sweep_plan
+
+    sweep_validation = validate_sweep_plan(
+        bridge["sweep_plan"], bridge["recipe_fingerprint"]
+    )
+    assert sweep_validation["task_count_estimate"] == 9
+
+
+def test_bridge_preserves_max_task_budget():
+    """Bridge respects the MAX_TASKS=100 budget."""
+    # A plan exceeding 100 tasks should fail legacy validation
+    result = validate_simulation_plan(
+        {
+            "sweep": {
+                "ratio_values": [i / 100 for i in range(1, 12)],
+                "period_values_m": [(390 + i) * 1e-9 for i in range(10)],
+            }
+        }
+    )
+    assert result["ok"] is False
+    assert result["error"]["type"] == "task_budget_exceeded"
+
+    # For a valid plan, the bridge sweep plan uses max_tasks=100
+    validated = validate_simulation_plan({})
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+    assert bridge["sweep_plan"]["max_tasks"] == 100
+
+
+def test_bridge_explicit_cpu_express_mode_zero():
+    """CPU resource and EXPRESS_MODE=0 defaults are preserved."""
+    validated = validate_simulation_plan({})
+    plan = validated["normalized_plan"]
+    assert plan["execution"]["resource"] == "CPU"
+    assert plan["execution"]["express_mode"] == 0
+
+    # The bridge should still work — it doesn't change the plan
+    bridge = metasurface_plan_to_recipe_sweep(plan)
+    assert bridge["recipe_fingerprint"]
+
+
+def test_validate_simulation_plan_includes_bridge_fingerprints():
+    """Validation result includes generic_recipe_fingerprint and generic_sweep_fingerprint."""
+    result = validate_simulation_plan({})
+
+    assert result["ok"] is True
+    assert "generic_recipe_fingerprint" in result
+    assert result["generic_recipe_fingerprint"].startswith("sha256:")
+    assert "generic_sweep_fingerprint" in result
+    assert result["generic_sweep_fingerprint"].startswith("sha256:")
+
+    # Same fingerprints should appear in the approval summary
+    summary = result["approval_summary"]
+    assert summary["generic_recipe_fingerprint"] == result["generic_recipe_fingerprint"]
+    assert summary["generic_sweep_fingerprint"] == result["generic_sweep_fingerprint"]
+
+
+def test_bridge_fingerprints_are_stable():
+    """Identical plans produce identical bridge fingerprints."""
+    first = validate_simulation_plan({})
+    second = validate_simulation_plan(
+        {
+            "schema_version": "0.1",
+            "device": {"type": "metasurface_unit_cell"},
+            "sweep": {
+                "axis": "period",
+                "ratio_values": [0.2, 0.8],
+                "period_values_m": [390e-9, 540e-9],
+                "fixed_height_m": 700e-9,
+            },
+        }
+    )
+
+    assert first["generic_recipe_fingerprint"] == second["generic_recipe_fingerprint"]
+    assert first["generic_sweep_fingerprint"] == second["generic_sweep_fingerprint"]
+
+
+def test_bridge_fingerprints_change_with_plan_changes():
+    """Different plans produce different bridge fingerprints."""
+    first = validate_simulation_plan({})
+    second = validate_simulation_plan(
+        {"sweep": {"ratio_values": [0.2, 0.5]}}
+    )
+
+    assert first["generic_recipe_fingerprint"] != second["generic_recipe_fingerprint"]
+    # Sweep fingerprint should also differ since parameter values changed
+    assert first["generic_sweep_fingerprint"] != second["generic_sweep_fingerprint"]
+
+
+def test_bridge_compatibility_metadata():
+    """Bridge metadata identifies the conversion source."""
+    validated = validate_simulation_plan({})
+    bridge = metasurface_plan_to_recipe_sweep(validated["normalized_plan"])
+
+    assert bridge["compatibility"]["source"] == "metasurface SimulationPlan v0.1"
+    assert bridge["compatibility"]["preserves_legacy_fingerprint"] is True
