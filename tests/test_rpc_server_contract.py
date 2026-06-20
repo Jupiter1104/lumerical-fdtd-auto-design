@@ -546,3 +546,46 @@ def test_catalog_enumeration_failure_keeps_session_active(
         == "object_library_enumeration_failed"
     )
     manager.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Analysis group runtime selection tests (Task 7)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_analysis_group_route_passes_runtime_selection_fields(
+    server_module, fake_session
+):
+    class FakeService:
+        def __init__(self):
+            self.body = None
+
+        def create(self, body):
+            self.body = body
+            return {
+                "name": body["name"],
+                "source": "builtin",
+                "script_id": "power_transmission_box",
+                "physical_conclusion": False,
+            }
+
+    service = FakeService()
+    app = server_module.create_app(
+        fake_session,
+        analysis_group_service=service,
+    )
+    response = app.test_client().post("/analysis-groups", json={
+        "name": "power_analysis",
+        "properties": {},
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "recipe_context": {"outputs": ["T"]},
+        "parameter_overrides": {"x span": 2e-6},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "dry_run": False,
+    })
+
+    assert response.status_code == 200
+    assert service.body["analysis_intent"]["kind"] == "transmission"
+    assert service.body["parameter_overrides"]["x span"] == 2e-6

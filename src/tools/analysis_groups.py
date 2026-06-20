@@ -11,11 +11,20 @@ def register_analysis_group_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     @mcp.tool()
     def fdtd_analysis_group_create(body: dict) -> dict:
         """
-        Create an analysis group (scripted post-processing).
+        Create an analysis group (scripted post-processing) with
+        deterministic runtime matching against the Object Library.
+        The server probes and verifies candidate analysis groups using
+        lumapi setup/readback; it never guesses numeric parameters.
 
         Args:
-            body: Analysis group specification. Optional official Object
-                Library fields:
+            body: Analysis group specification.
+                analysis_intent: high-level intent (e.g. kind, outputs)
+                    that drives candidate selection.
+                recipe_context: solver geometry, monitor configuration,
+                    and figure-of-merit hints from the device recipe.
+                parameter_overrides: explicit numeric overrides for
+                    analysis group parameters.
+                Optional official Object Library fields:
                 prefer_builtin: if true, use addobject(script_id) when
                     script_id is provided; otherwise fall back to custom.
                 require_builtin: if true, fail unless script_id is provided.
@@ -23,7 +32,8 @@ def register_analysis_group_tools(mcp: FastMCP, rpc: RpcClient) -> None:
                     target-version addobject enumeration.
 
         Returns:
-            Creation confirmation with group name.
+            Creation confirmation with group name, source, match score,
+            parameter resolution, and verification status.
         """
         return rpc.analysis_group_create(
             name=body["name"],
@@ -32,6 +42,9 @@ def register_analysis_group_tools(mcp: FastMCP, rpc: RpcClient) -> None:
             prefer_builtin=body.get("prefer_builtin", False),
             require_builtin=body.get("require_builtin", False),
             script_id=body.get("script_id", ""),
+            analysis_intent=body.get("analysis_intent"),
+            recipe_context=body.get("recipe_context", {}),
+            parameter_overrides=body.get("parameter_overrides", {}),
         )
 
     @mcp.tool()

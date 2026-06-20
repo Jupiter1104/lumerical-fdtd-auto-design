@@ -19,6 +19,13 @@ from typing import Any, Optional
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
+from src.analysis_group_runtime import (
+    AnalysisGroupInspector,
+    AnalysisGroupService,
+    AnalysisRuntimeError,
+    LumapiBridge,
+    SessionOperationGate,
+)
 from src.device_recipe import compile_recipe
 from src.job_store import JobError, JobStore
 from src.object_library_catalog import (
@@ -590,6 +597,8 @@ def create_app(
     job_store: Optional[JobStore] = None,
     sweep_runner=None,
     backend=None,
+    object_library_catalog=None,
+    analysis_group_service=None,
 ) -> Flask:
     """Create a testable Flask app with an injectable session backend.
 
@@ -613,6 +622,24 @@ def create_app(
 
     # Adapter wraps the test backend if given; otherwise wraps the session
     adapter = WindowsFdtdAdapter(backend if backend is not None else session)
+
+    # Build the analysis group service when not injected by tests
+    catalog = object_library_catalog
+    if catalog is None and isinstance(session, SessionManager) and session_manager is not None:
+        catalog = session._object_library_catalog
+
+    operation_gate = SessionOperationGate()
+    if analysis_group_service is None and catalog is not None:
+        bridge = LumapiBridge(backend if backend is not None else session)
+        inspector = AnalysisGroupInspector(
+            bridge,
+            catalog,
+            resolve_object_library_root() / "probe-work",
+            operation_gate,
+        )
+        analysis_group_service = AnalysisGroupService(
+            adapter, bridge, catalog, inspector
+        )
 
     def reject_during_sweep() -> None:
         if sweeps.is_running:
@@ -650,6 +677,19 @@ def create_app(
 
     @app.errorhandler(AdapterError)
     def handle_adapter_error(error):
+        return (
+            jsonify(
+                _error_payload(
+                    error.error_type,
+                    error.message,
+                    error.details,
+                )
+            ),
+            error.status_code,
+        )
+
+    @app.errorhandler(AnalysisRuntimeError)
+    def handle_analysis_runtime_error(error):
         return (
             jsonify(
                 _error_payload(
@@ -752,7 +792,8 @@ def create_app(
     @app.post("/sim/run")
     def simulation_run():
         reject_during_sweep()
-        return _success(adapter.simulation_run())
+        with operation_gate.acquire("simulation_run"):
+            return _success(adapter.simulation_run())
 
     @app.post("/simulation/result")
     @app.post("/sim/getresult")
@@ -1053,16 +1094,26 @@ def create_app(
     def analysis_groups_create():
         reject_during_sweep()
         data = _json_body()
-        return _success(
-            adapter.analysis_group_create(
+        if analysis_group_service is None:
+            return _success(adapter.analysis_group_create(
                 name=_required(data, "name"),
                 properties=data.get("properties", {}),
                 dry_run=data.get("dry_run", False),
                 prefer_builtin=data.get("prefer_builtin", False),
                 require_builtin=data.get("require_builtin", False),
                 script_id=data.get("script_id", ""),
-            )
-        )
+            ))
+        return _success(analysis_group_service.create({
+            "name": _required(data, "name"),
+            "properties": data.get("properties", {}),
+            "analysis_intent": data.get("analysis_intent"),
+            "recipe_context": data.get("recipe_context", {}),
+            "parameter_overrides": data.get("parameter_overrides", {}),
+            "prefer_builtin": data.get("prefer_builtin", False),
+            "require_builtin": data.get("require_builtin", False),
+            "script_id": data.get("script_id", ""),
+            "dry_run": data.get("dry_run", False),
+        }))
 
     @app.get("/analysis-groups/<name>")
     def analysis_groups_get(name):
@@ -1198,27 +1249,28 @@ def create_app(
                 },
             )
 
-        # 3. Create clean project
-        adapter.project_new(
-            name=f"recipe_build_{output_fsp}",
-            discard_unsaved=True,
-        )
+        with operation_gate.acquire("recipe_build"):
+            # 3. Create clean project
+            adapter.project_new(
+                name=f"recipe_build_{output_fsp}",
+                discard_unsaved=True,
+            )
 
-        # 4. Execute build-only script
-        log_lines: list = []
-        script = compiled["script"]
-        eval_result = session.eval(script)
-        log_lines.append(f"Script executed ({len(script)} chars).")
+            # 4. Execute build-only script
+            log_lines: list = []
+            script = compiled["script"]
+            eval_result = session.eval(script)
+            log_lines.append(f"Script executed ({len(script)} chars).")
 
-        # 5. Save to output path
-        save_result = session.save(str(output_fsp))
-        log_lines.append(f"Project saved to {save_result.get('saved_to', output_fsp)}.")
+            # 5. Save to output path
+            save_result = session.save(str(output_fsp))
+            log_lines.append(f"Project saved to {save_result.get('saved_to', output_fsp)}.")
 
-        # 6. Gather object list
-        object_list = adapter.object_list()
-        log_lines.append(
-            f"Object list: {len(object_list.get('objects', []))} objects."
-        )
+            # 6. Gather object list
+            object_list = adapter.object_list()
+            log_lines.append(
+                f"Object list: {len(object_list.get('objects', []))} objects."
+            )
 
         return _success(
             {

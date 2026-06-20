@@ -27,6 +27,9 @@ class FakeRpc:
         prefer_builtin=False,
         require_builtin=False,
         script_id="",
+        analysis_intent=None,
+        recipe_context=None,
+        parameter_overrides=None,
     ):
         self.calls.append((
             "analysis_group_create",
@@ -36,6 +39,9 @@ class FakeRpc:
             prefer_builtin,
             require_builtin,
             script_id,
+            analysis_intent,
+            recipe_context,
+            parameter_overrides,
         ))
         return {"ok": True, "name": name}
 
@@ -65,6 +71,9 @@ def test_analysis_group_create_tool_extracts_body_fields():
         "prefer_builtin": True,
         "require_builtin": False,
         "script_id": "power_transmission_box",
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "recipe_context": {"outputs": ["T"]},
+        "parameter_overrides": {"x span": 2e-6},
     })
 
     assert response == {"ok": True, "name": "analysis_builtin"}
@@ -76,4 +85,7 @@ def test_analysis_group_create_tool_extracts_body_fields():
         True,
         False,
         "power_transmission_box",
+        {"kind": "transmission", "outputs": ["T"]},
+        {"outputs": ["T"]},
+        {"x span": 2e-6},
     )]

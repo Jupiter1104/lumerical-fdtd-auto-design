@@ -352,6 +352,9 @@ class RpcClient:
         prefer_builtin: bool = False,
         require_builtin: bool = False,
         script_id: str = "",
+        analysis_intent: dict | None = None,
+        recipe_context: dict | None = None,
+        parameter_overrides: dict | None = None,
     ) -> dict:
         return self._post(
             "/analysis-groups",
@@ -362,6 +365,9 @@ class RpcClient:
                 "prefer_builtin": prefer_builtin,
                 "require_builtin": require_builtin,
                 "script_id": script_id,
+                "analysis_intent": analysis_intent or {},
+                "recipe_context": recipe_context or {},
+                "parameter_overrides": parameter_overrides or {},
             },
         )
 
