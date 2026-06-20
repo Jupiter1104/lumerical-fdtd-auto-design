@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
+from src.generic_sweep import plan_generic_sweep
 from src.job_notifications import notify_job_state
 from src.sweep_job import (
     build_sweep_tasks,
@@ -18,7 +19,7 @@ from src.sweep_job import (
 
 JOB_STATES = {"planned", "queued", "running", "succeeded", "failed", "partial"}
 TASK_STATES = {"pending", "running", "succeeded", "failed", "skipped"}
-SUPPORTED_JOB_TYPES = {"geometry-smoke", "metasurface-sweep"}
+SUPPORTED_JOB_TYPES = {"geometry-smoke", "metasurface-sweep", "recipe-sweep"}
 
 
 class JobError(Exception):
@@ -81,6 +82,7 @@ class JobStore:
     ) -> dict:
         normalized = self._normalize_request(request)
         self._require_real_approval(normalized)
+        self._verify_packet_fingerprint(normalized)
 
         existing = self._find_idempotent_job(normalized)
         if existing:
@@ -89,12 +91,26 @@ class JobStore:
         job_id = self._new_job_id(normalized["job_type"])
         self._create_job(job_id, normalized, state="queued")
         self._remember_idempotency(normalized, job_id)
+
+        # Mock recipe-sweep: write synthetic results and finalize
+        if (
+            normalized["mode"] == "mock"
+            and normalized["job_type"] == "recipe-sweep"
+        ):
+            self._write_recipe_sweep_mock_results(job_id)
+            return self.finalize(job_id)
+
+        # Recipe-sweep real: enqueue only, execution is handled externally
+        if normalized["job_type"] == "recipe-sweep":
+            return self.get(job_id)
+
         self._run_job(job_id, executor)
         return self.get(job_id)
 
     def enqueue(self, request: dict) -> dict:
         normalized = self._normalize_request(request)
         self._require_real_approval(normalized)
+        self._verify_packet_fingerprint(normalized)
         existing = self._find_idempotent_job(normalized)
         if existing:
             return existing
@@ -217,6 +233,32 @@ class JobStore:
             tasks = request["tasks"]
         elif job_type == "metasurface-sweep":
             tasks = build_sweep_tasks(request)
+        elif job_type == "recipe-sweep":
+            plan_result = plan_generic_sweep(
+                request.get("recipe", {}),
+                request.get("sweep_plan", {}),
+            )
+            if not plan_result["ok"]:
+                raise JobError(
+                    "validation_error",
+                    "Sweep plan validation failed.",
+                    400,
+                    {"errors": plan_result.get("errors", [])},
+                )
+            plan_tasks = plan_result["plan"]["tasks"]
+            tasks = [
+                {
+                    "operation": "recipe-sweep-sample",
+                    "input": {
+                        "sweep_task_id": t["task_id"],
+                        "index": t["index"],
+                        "parameters": t["parameters"],
+                        "script_sha256": t["script_sha256"],
+                        "script": t["script"],
+                    },
+                }
+                for t in plan_tasks
+            ]
         else:
             tasks = [
                 {
@@ -241,6 +283,13 @@ class JobStore:
         }
         if job_type == "metasurface-sweep":
             normalized["sweep"] = normalize_sweep_input(request)
+        if job_type == "recipe-sweep":
+            normalized["recipe"] = request.get("recipe")
+            normalized["sweep_plan"] = request.get("sweep_plan")
+            normalized["plan"] = plan_result["plan"]
+            normalized["packet_fingerprint"] = request.get(
+                "packet_fingerprint"
+            )
         return normalized
 
     def _require_real_approval(self, request: dict) -> None:
@@ -255,6 +304,30 @@ class JobStore:
                 "approval_required",
                 "Real jobs require explicit approval.",
                 403,
+            )
+
+    def _verify_packet_fingerprint(self, request: dict) -> None:
+        """Verify packet_fingerprint for real recipe-sweep jobs."""
+        if (
+            request.get("mode") != "real"
+            or request.get("job_type") != "recipe-sweep"
+        ):
+            return
+        provided = request.get("packet_fingerprint")
+        if not provided:
+            raise JobError(
+                "validation_error",
+                "packet_fingerprint is required for real recipe-sweep jobs.",
+                400,
+            )
+        expected = request["plan"]["packet_fingerprint"]
+        if provided != expected:
+            raise JobError(
+                "fingerprint_mismatch",
+                "Packet fingerprint does not match the server-side computation. "
+                "The recipe or sweep plan may have been tampered with.",
+                409,
+                {"expected": expected, "provided": provided},
             )
 
     def _new_job_id(self, job_type: str) -> str:
@@ -324,6 +397,13 @@ class JobStore:
             f"{created_at} Job {state}.\n",
             encoding="utf-8",
         )
+
+        # Recipe-sweep: write extra artifacts (inputs, compiled scripts, task JSONs)
+        if request.get("job_type") == "recipe-sweep":
+            self._write_recipe_sweep_inputs(job_dir, request)
+            self._write_recipe_sweep_compiled(job_dir, request)
+            self._write_recipe_sweep_tasks(job_dir, request, created_at)
+
         if state == "planned":
             notify_job_state(job_dir, "planned")
         return {
@@ -344,6 +424,113 @@ class JobStore:
 
     def _read_json(self, path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8"))
+
+    # ── recipe-sweep helpers ────────────────────────────────────────────
+
+    def _write_recipe_sweep_inputs(
+        self, job_dir: Path, request: dict
+    ) -> None:
+        """Write inputs/recipe.json and inputs/sweep_plan.json."""
+        self._write_json(
+            job_dir / "inputs" / "recipe.json",
+            request["recipe"],
+        )
+        self._write_json(
+            job_dir / "inputs" / "sweep_plan.json",
+            request["sweep_plan"],
+        )
+
+    def _write_recipe_sweep_compiled(
+        self, job_dir: Path, request: dict
+    ) -> None:
+        """Write compiled/compile_report.json and compiled/scripts/*.lsf."""
+        plan = request["plan"]
+        scripts_dir = job_dir / "compiled" / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+
+        compile_report = {
+            "ok": True,
+            "plan": plan,
+            "errors": [],
+            "warnings": [],
+        }
+        self._write_json(
+            job_dir / "compiled" / "compile_report.json",
+            compile_report,
+        )
+
+        for index, task_input in enumerate(request["tasks"], start=1):
+            task_id = f"task_{index:04d}"
+            script = task_input["input"].get("script", "")
+            script_path = scripts_dir / f"{task_id}.lsf"
+            script_path.write_text(script, encoding="utf-8")
+
+    def _write_recipe_sweep_tasks(
+        self, job_dir: Path, request: dict, created_at: str
+    ) -> None:
+        """Overwrite task JSONs with recipe-sweep-specific format.
+
+        Each task JSON includes: task_id, index, parameters, script_sha256,
+        synthetic, status, state, model_path, metrics_path.
+        """
+        for index, task_input in enumerate(request["tasks"], start=1):
+            task_id = f"task_{index:04d}"
+            inp = task_input.get("input", {})
+            task = {
+                "task_id": task_id,
+                "index": inp.get("index", index - 1),
+                "parameters": inp.get("parameters", {}),
+                "script_sha256": inp.get("script_sha256", ""),
+                "synthetic": False,
+                "status": "pending",
+                "state": "pending",
+                "model_path": None,
+                "metrics_path": None,
+                "created_at": created_at,
+                "updated_at": created_at,
+            }
+            self._write_json(job_dir / "tasks" / f"{task_id}.json", task)
+
+    def _write_recipe_sweep_mock_results(self, job_id: str) -> None:
+        """Write synthetic metrics for all tasks and update task files."""
+        job_dir = self._job_dir(job_id)
+        results_dir = job_dir / "results"
+
+        for task_path in sorted((job_dir / "tasks").glob("task_*.json")):
+            task = self._read_json(task_path)
+            task_id = task["task_id"]
+
+            # Write synthetic metrics file
+            metrics = {
+                "task_id": task_id,
+                "index": task["index"],
+                "parameters": task["parameters"],
+                "transmission": 0.92,
+                "phase_rad": 0.0,
+                "efficiency": 0.88,
+                "synthetic": True,
+            }
+            metrics_path = results_dir / f"{task_id}_metrics.json"
+            self._write_json(metrics_path, metrics)
+
+            # Update task file
+            task["synthetic"] = True
+            task["status"] = "succeeded"
+            task["state"] = "succeeded"
+            task["model_path"] = str(
+                job_dir / "models" / f"{task_id}.fsp"
+            )
+            task["metrics_path"] = str(metrics_path)
+            task["updated_at"] = utc_now()
+            self._write_json(task_path, task)
+
+            # Append to run log
+            self.append_log(
+                job_id,
+                f"Mock {task_id}: synthetic metrics written.",
+            )
+
+    # ── end recipe-sweep helpers ───────────────────────────────────────
 
     def _job_dir(self, job_id: str) -> Path:
         job_dir = self.root / job_id
@@ -504,14 +691,26 @@ class JobStore:
     def _write_summary(self, job_id: str) -> dict:
         job_dir = self._job_dir(job_id)
         tasks = self._tasks(job_id)
+        results = []
+        for task in tasks:
+            if task.get("state") != "succeeded":
+                continue
+            if "outputs" in task:
+                results.append(task["outputs"])
+            else:
+                # Recipe-sweep task format
+                results.append({
+                    "task_id": task.get("task_id"),
+                    "index": task.get("index"),
+                    "parameters": task.get("parameters"),
+                    "model_path": task.get("model_path"),
+                    "metrics_path": task.get("metrics_path"),
+                    "synthetic": task.get("synthetic"),
+                })
         summary = {
             "job_id": job_id,
             "task_counts": self._task_counts(tasks),
-            "results": [
-                task["outputs"]
-                for task in tasks
-                if task["state"] == "succeeded"
-            ],
+            "results": results,
         }
         quality_path = job_dir / "quality_report.json"
         evidence_path = job_dir / "evidence" / "index.json"

@@ -1031,6 +1031,17 @@ def create_app(
             job = jobs.enqueue(data)
             sweeps.start(job["job_id"])
             return _success(job, status_code=202)
+
+        # Recipe-sweep real: enqueue and return 202 (no polling)
+        if data.get("mode") == "real" and data.get("job_type") == "recipe-sweep":
+            job = jobs.enqueue(data)
+            return _success(job, status_code=202)
+
+        # Recipe-sweep mock: JobStore.start() handles mock results internally
+        if data.get("mode") == "mock" and data.get("job_type") == "recipe-sweep":
+            job = jobs.start(data)
+            return _success(job)
+
         executor = _job_executor(data, session)
         job = jobs.start(data, executor=executor)
         if data.get("mode") == "mock" and data.get("job_type") == "metasurface-sweep":

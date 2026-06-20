@@ -396,3 +396,194 @@ def test_real_sweep_background_exception_marks_job_failed(
         tmp_path / "jobs" / job_id,
         "failed",
     )
+
+
+# ── Recipe-sweep RPC tests ──────────────────────────────────────────────
+
+RECIPE = {
+    "schema_version": "1.0",
+    "parameters": {
+        "period": {
+            "type": "float",
+            "default": 500e-9,
+            "min": 300e-9,
+            "max": 700e-9,
+        },
+        "duty_cycle": {
+            "type": "float",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 0.9,
+        },
+    },
+    "assumptions": [
+        {"parameter": "period", "reason": "Typical grating period"},
+        {"parameter": "duty_cycle", "reason": "Typical fill factor"},
+    ],
+    "materials": [
+        {"name": "substrate", "type": "SiO2", "properties": {"index": 1.45}},
+        {"name": "grating", "type": "Si", "properties": {"index": 3.5}},
+    ],
+    "geometry": [
+        {
+            "type": "rectangle",
+            "name": "substrate",
+            "properties": {
+                "x_span": "${period}",
+                "y_span": "${period} * 0.5",
+            },
+        },
+    ],
+}
+
+SWEEP_PLAN = {
+    "schema_version": "1.0",
+    "parameters": [
+        {"name": "period", "values": [400e-9, 500e-9]},
+        {"name": "duty_cycle", "values": [0.3, 0.7]},
+    ],
+    "max_tasks": 100,
+}
+
+
+def test_jobs_plan_recipe_sweep_creates_planned_job(client):
+    """Plan endpoint accepts recipe-sweep and returns planned job."""
+    response = client.post(
+        "/jobs/plan",
+        json={
+            "mode": "plan",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["state"] == "planned"
+    assert payload["task_count"] == 4
+    assert payload["job_id"].startswith("job_")
+
+
+def test_jobs_start_mock_recipe_sweep_succeeds(client):
+    """Mock start for recipe-sweep writes synthetic results."""
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "mock",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["status"]["state"] == "succeeded"
+    assert payload["summary"]["task_counts"]["succeeded"] == 4
+    # Verify results include synthetic flag
+    for result in payload["summary"]["results"]:
+        assert result["synthetic"] is True
+
+
+def test_jobs_start_real_recipe_sweep_returns_202(client):
+    """Real start for recipe-sweep returns 202 with job_id."""
+    # First, plan to get packet_fingerprint
+    plan_resp = client.post(
+        "/jobs/plan",
+        json={
+            "mode": "plan",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+        },
+    ).get_json()
+
+    # Read the compile report to get packet_fingerprint
+    # We need to read from the job store directly
+    import json as _json
+    from pathlib import Path as _Path
+    job_dir = _Path(plan_resp["job_dir"])
+    compile_report = _json.loads(
+        (job_dir / "compiled" / "compile_report.json").read_text(encoding="utf-8")
+    )
+    packet_fp = compile_report["plan"]["packet_fingerprint"]
+
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+            "packet_fingerprint": packet_fp,
+            "approval": {"approved": True, "approved_for": "real_run"},
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 202
+    assert payload["ok"] is True
+    assert payload["state"] == "queued"
+    assert payload["task_count"] == 4
+
+
+def test_jobs_start_real_recipe_sweep_requires_approval(client):
+    """Real start for recipe-sweep requires approval."""
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+            "packet_fingerprint": "sha256:deadbeef",
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 403
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "approval_required"
+
+
+def test_jobs_start_real_recipe_sweep_requires_packet_fingerprint(client):
+    """Real start for recipe-sweep requires packet_fingerprint."""
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+            "approval": {"approved": True, "approved_for": "real_run"},
+            # no packet_fingerprint
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 400
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "validation_error"
+
+
+def test_jobs_start_real_recipe_sweep_rejects_wrong_fingerprint(client):
+    """Real start for recipe-sweep rejects mismatched fingerprint."""
+    response = client.post(
+        "/jobs/start",
+        json={
+            "mode": "real",
+            "job_type": "recipe-sweep",
+            "recipe": RECIPE,
+            "sweep_plan": SWEEP_PLAN,
+            "packet_fingerprint": "sha256:00000000000000000000000000000000000000wrong",
+            "approval": {"approved": True, "approved_for": "real_run"},
+        },
+    )
+    payload = response.get_json()
+
+    assert response.status_code == 409
+    assert payload["ok"] is False
+    assert payload["error"]["type"] == "fingerprint_mismatch"
