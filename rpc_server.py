@@ -22,6 +22,7 @@ from werkzeug.exceptions import HTTPException
 from src.job_store import JobError, JobStore
 from src.native_sweep import NativeSweepRunner
 from src.sweep_job import write_job_artifacts
+from src.windows_fdtd_adapter import AdapterError, WindowsFdtdAdapter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -503,14 +504,26 @@ def create_app(
     session_manager: Optional[SessionManager] = None,
     job_store: Optional[JobStore] = None,
     sweep_runner=None,
+    backend=None,
 ) -> Flask:
-    """Create a testable Flask app with an injectable session backend."""
+    """Create a testable Flask app with an injectable session backend.
+
+    Parameters
+    ----------
+    backend:
+        Optional fake backend for tests.  When provided, the adapter wraps
+        *backend* instead of the session manager, allowing typed routes to
+        be exercised without a real Lumerical session.
+    """
     app = Flask(__name__)
     session = session_manager or SessionManager()
     jobs = job_store or JobStore()
     jobs.recover_interrupted_jobs()
     runner = sweep_runner or NativeSweepRunner(session, jobs)
     sweeps = SweepCoordinator(runner, jobs)
+
+    # Adapter wraps the test backend if given; otherwise wraps the session
+    adapter = WindowsFdtdAdapter(backend if backend is not None else session)
 
     def reject_during_sweep() -> None:
         if sweeps.is_running:
@@ -535,6 +548,19 @@ def create_app(
 
     @app.errorhandler(JobError)
     def handle_job_error(error):
+        return (
+            jsonify(
+                _error_payload(
+                    error.error_type,
+                    error.message,
+                    error.details,
+                )
+            ),
+            error.status_code,
+        )
+
+    @app.errorhandler(AdapterError)
+    def handle_adapter_error(error):
         return (
             jsonify(
                 _error_payload(
@@ -635,7 +661,7 @@ def create_app(
     @app.post("/sim/run")
     def simulation_run():
         reject_during_sweep()
-        return _success(session.run())
+        return _success(adapter.simulation_run())
 
     @app.post("/simulation/result")
     @app.post("/sim/getresult")
@@ -669,6 +695,328 @@ def create_app(
     def geometry_circle():
         reject_during_sweep()
         return _success(session.addcircle(**_json_body()))
+
+    # ------------------------------------------------------------------
+    # Typed project routes
+    # ------------------------------------------------------------------
+
+    @app.post("/project/new")
+    def project_new():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.project_new(
+                name=_required(data, "name"),
+                discard_unsaved=data.get("discard_unsaved", True),
+            )
+        )
+
+    @app.get("/project/status")
+    def project_status():
+        return _success(adapter.project_status())
+
+    @app.post("/project/switch-layout")
+    def project_switch_layout():
+        reject_during_sweep()
+        return _success(adapter.switch_to_layout())
+
+    # ------------------------------------------------------------------
+    # Typed object routes
+    # ------------------------------------------------------------------
+
+    @app.post("/objects")
+    def objects_create():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.object_create(
+                object_type=_required(data, "object_type"),
+                name=_required(data, "name"),
+                properties=data.get("properties", {}),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.get("/objects")
+    def objects_list():
+        scope = request.args.get("scope")
+        object_type = request.args.get("object_type")
+        return _success(adapter.object_list(scope=scope, object_type=object_type))
+
+    @app.get("/objects/<name>")
+    def objects_get(name):
+        return _success(adapter.object_get(name))
+
+    @app.put("/objects/<name>")
+    def objects_update(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.object_update(
+                name=name,
+                properties=_required(data, "properties"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.delete("/objects/<name>")
+    def objects_delete(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.object_delete(
+                name=name,
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/objects/<name>/copy")
+    def objects_copy(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.object_copy(
+                name=name,
+                new_name=_required(data, "new_name"),
+                transform=data.get("transform"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/objects/<name>/rename")
+    def objects_rename(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.object_rename(
+                name=name,
+                new_name=_required(data, "new_name"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/groups")
+    def groups_update():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.group_update(
+                group_name=_required(data, "group_name"),
+                add=data.get("add"),
+                remove=data.get("remove"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Typed material routes
+    # ------------------------------------------------------------------
+
+    @app.post("/materials")
+    def materials_create():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.material_create(
+                name=_required(data, "name"),
+                properties=data.get("properties", {}),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.get("/materials")
+    def materials_list():
+        return _success(adapter.material_list())
+
+    @app.get("/materials/<name>")
+    def materials_get(name):
+        return _success(adapter.material_get(name))
+
+    @app.put("/materials/<name>")
+    def materials_update(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.material_update(
+                name=name,
+                properties=_required(data, "properties"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/materials/assign")
+    def materials_assign():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.material_assign(
+                object_name=_required(data, "object"),
+                material_name=_required(data, "material"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/materials/fit-diagnose")
+    def materials_fit_diagnose():
+        data = _json_body()
+        return _success(adapter.material_fit_diagnose(data.get("data")))
+
+    # ------------------------------------------------------------------
+    # Typed solver routes
+    # ------------------------------------------------------------------
+
+    @app.get("/solver")
+    def solver_get():
+        return _success(adapter.solver_get())
+
+    @app.put("/solver")
+    def solver_update():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.solver_update(
+                config=_required(data, "config"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.post("/solver/mesh-diagnose")
+    def solver_mesh_diagnose():
+        return _success(adapter.solver_mesh_diagnose())
+
+    @app.get("/solver/resource-estimate")
+    def solver_resource_estimate():
+        return _success(adapter.solver_resource_estimate())
+
+    # ------------------------------------------------------------------
+    # Typed source routes
+    # ------------------------------------------------------------------
+
+    @app.post("/sources")
+    def sources_create():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.source_create(
+                source_type=_required(data, "source_type"),
+                name=_required(data, "name"),
+                properties=data.get("properties", {}),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.get("/sources/<name>")
+    def sources_get(name):
+        return _success(adapter.source_get(name))
+
+    @app.put("/sources/<name>")
+    def sources_update(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.source_update(
+                name=name,
+                properties=_required(data, "properties"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Typed monitor routes
+    # ------------------------------------------------------------------
+
+    @app.post("/monitors")
+    def monitors_create():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.monitor_create(
+                monitor_type=_required(data, "monitor_type"),
+                name=_required(data, "name"),
+                properties=data.get("properties", {}),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.get("/monitors/<name>")
+    def monitors_get(name):
+        return _success(adapter.monitor_get(name))
+
+    @app.put("/monitors/<name>")
+    def monitors_update(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.monitor_update(
+                name=name,
+                properties=_required(data, "properties"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Typed analysis-group routes
+    # ------------------------------------------------------------------
+
+    @app.post("/analysis-groups")
+    def analysis_groups_create():
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.analysis_group_create(
+                name=_required(data, "name"),
+                properties=data.get("properties", {}),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    @app.get("/analysis-groups/<name>")
+    def analysis_groups_get(name):
+        return _success(adapter.analysis_group_get(name))
+
+    @app.put("/analysis-groups/<name>")
+    def analysis_groups_update(name):
+        reject_during_sweep()
+        data = _json_body()
+        return _success(
+            adapter.analysis_group_update(
+                name=name,
+                properties=_required(data, "properties"),
+                dry_run=data.get("dry_run", False),
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # Typed simulation status route
+    # ------------------------------------------------------------------
+
+    @app.get("/simulation/status")
+    def simulation_status():
+        return _success(adapter.simulation_status())
+
+    # ------------------------------------------------------------------
+    # Typed result routes
+    # ------------------------------------------------------------------
+
+    @app.get("/results")
+    def results_list():
+        return _success(adapter.result_list())
+
+    @app.get("/results/<monitor>/<attribute>")
+    def results_describe(monitor, attribute):
+        return _success(adapter.result_describe(monitor, attribute))
+
+    @app.get("/results/<monitor>/<attribute>/value")
+    def results_read(monitor, attribute):
+        return _success(adapter.result_read(monitor, attribute))
+
+    @app.get("/results/<monitor>/<attribute>/download")
+    def results_download(monitor, attribute):
+        return _success(adapter.result_download(monitor, attribute))
+
+    # ------------------------------------------------------------------
+    # Jobs
+    # ------------------------------------------------------------------
 
     @app.post("/jobs/plan")
     def jobs_plan():
