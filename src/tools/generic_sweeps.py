@@ -145,9 +145,7 @@ def register_generic_sweep_tools(mcp: FastMCP, rpc: RpcClient) -> None:
                     },
                 }
 
-            # Acceptance-test skip token for offline CI
-            _skip_fp = approval_fingerprint.startswith("__acceptance_test_skip__")
-            if not _skip_fp and approval_fingerprint != packet_fingerprint:
+            if approval_fingerprint != packet_fingerprint:
                 return {
                     "ok": False,
                     "error": {
@@ -176,21 +174,17 @@ def register_generic_sweep_tools(mcp: FastMCP, rpc: RpcClient) -> None:
                         },
                     }
 
-            # ── Mock mode: return mock job without calling RPC ──────────
-            if mode == "mock":
-                return {
-                    "ok": True,
-                    "job_id": f"mock-job-{packet_fingerprint[:12]}",
-                    "mode": "mock",
-                    "plan": plan_result["plan"],
-                    "message": "Mock sweep started — no RPC call made.",
-                }
-
             # ── Build request for RPC ──────────────────────────────────
             request = {
                 "mode": mode,
-                "job_type": "generic-sweep",
-                "idempotency_key": f"generic-sweep:{packet_fingerprint}:{mode}",
+                "job_type": "recipe-sweep",
+                "idempotency_key": f"recipe-sweep:{packet_fingerprint}:{mode}",
+                "recipe": recipe,
+                "sweep_plan": sweep_plan,
+                "plan_approval": {
+                    "approved": True,
+                    "packet_fingerprint": packet_fingerprint,
+                },
                 "sweep": {
                     "recipe_fingerprint": plan_result["plan"]["recipe_fingerprint"],
                     "sweep_fingerprint": plan_result["plan"]["sweep_fingerprint"],

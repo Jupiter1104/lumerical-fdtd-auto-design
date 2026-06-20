@@ -1,7 +1,6 @@
 """Tests for validate_parameter_file.py — offline parameter validation."""
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,15 +8,13 @@ from pathlib import Path
 
 FIXTURE = Path(__file__).parent / "fixtures" / "synthetic_parameters.json"
 SCRIPT = Path(__file__).parent.parent / "scripts" / "validate_parameter_file.py"
-PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(PROJECT_ROOT)
+    """Run the validation script without any env manipulation."""
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
-        capture_output=True, text=True, env=env,
+        capture_output=True, text=True,
     )
 
 

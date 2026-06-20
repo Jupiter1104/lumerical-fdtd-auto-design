@@ -89,7 +89,7 @@ def sweep_plan_range():
         "schema_version": "1.0",
         "parameters": [
             {"name": "period", "values": [500e-9]},
-            {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}},
+            {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}},
         ],
         "max_tasks": 100,
     }
@@ -101,7 +101,7 @@ def sweep_plan_single():
     return {
         "schema_version": "1.0",
         "parameters": [
-            {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}},
+            {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}},
         ],
         "max_tasks": 100,
     }
@@ -114,25 +114,25 @@ def sweep_plan_single():
 
 def test_range_inclusive_start_stop():
     """Range includes exact start and stop values."""
-    result = _expand_range(0.2, 0.8, 0.3)
+    result = _expand_range(0.2, 0.8, 3)
     assert result == [0.2, 0.5, 0.8]
 
 
-def test_range_single_step():
-    """Range with start == stop (step > stop-start) still produces one value."""
-    result = _expand_range(0.5, 0.5, 0.1)
-    assert result == [0.5]
+def test_range_minimum_count():
+    """Range with count=2 produces start and stop."""
+    result = _expand_range(0.5, 0.5, 2)
+    assert result == [0.5, 0.5]
 
 
 def test_range_two_values():
-    """Range with exactly one step yields two values."""
-    result = _expand_range(0.0, 0.3, 0.3)
+    """Range with count=2 yields exactly two values."""
+    result = _expand_range(0.0, 0.3, 2)
     assert result == [0.0, 0.3]
 
 
 def test_range_with_submicron_values():
     """Range handles sub-micron float values correctly."""
-    result = _expand_range(390e-9, 540e-9, 75e-9)
+    result = _expand_range(390e-9, 540e-9, 3)
     assert len(result) == 3
     assert result[0] == pytest.approx(390e-9)
     assert result[-1] == pytest.approx(540e-9)
@@ -140,15 +140,15 @@ def test_range_with_submicron_values():
 
 def test_range_stop_is_exact():
     """The final value in a range must match stop exactly, not approximately."""
-    result = _expand_range(0.0, 1.0, 0.25)
+    result = _expand_range(0.0, 1.0, 5)
     assert result[-1] == 1.0
     assert result == [0.0, 0.25, 0.5, 0.75, 1.0]
 
 
-def test_range_zero_step_fails():
-    """Range with step=0 should raise an error."""
-    with pytest.raises(ValueError, match="step"):
-        _expand_range(0.0, 1.0, 0.0)
+def test_range_count_below_2_fails():
+    """Range with count=1 should raise an error."""
+    with pytest.raises(ValueError, match="count"):
+        _expand_range(0.0, 1.0, 1)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -214,7 +214,7 @@ def test_cartesian_product_with_range():
     """Cartesian product works with range-based parameters."""
     params = [
         {"name": "period", "values": [500e-9]},
-        {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}},
+        {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}},
     ]
     tasks = _expand_cartesian_product(params)
     assert len(tasks) == 3
@@ -314,7 +314,7 @@ def test_validate_parameter_with_both_values_and_range():
                 {
                     "name": "ratio",
                     "values": [0.2, 0.5],
-                    "range": {"start": 0.2, "stop": 0.8, "step": 0.3},
+                    "range": {"start": 0.2, "stop": 0.8, "count": 3},
                 },
             ],
             "max_tasks": 10,
@@ -375,13 +375,13 @@ def test_validate_range_missing_fields():
     assert any(e["code"] == "invalid_range_spec" for e in result["errors"])
 
 
-def test_validate_range_step_zero_fails():
-    """Range with step=0 fails."""
+def test_validate_range_count_below_2_fails():
+    """Range with count=1 fails (must be >= 2)."""
     result = validate_sweep_plan(
         {
             "schema_version": "1.0",
             "parameters": [
-                {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0}},
+                {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 1}},
             ],
             "max_tasks": 10,
         },

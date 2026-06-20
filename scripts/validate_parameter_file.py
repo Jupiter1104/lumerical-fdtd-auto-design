@@ -15,6 +15,11 @@ import json
 import sys
 from pathlib import Path
 
+# Add project root to sys.path so 'src' imports work without PYTHONPATH
+_sys_path_project_root = Path(__file__).resolve().parent.parent
+if str(_sys_path_project_root) not in sys.path:
+    sys.path.insert(0, str(_sys_path_project_root))
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(

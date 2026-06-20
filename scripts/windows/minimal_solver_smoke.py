@@ -154,19 +154,39 @@ def main() -> int:
     except Exception as exc:
         record_step("simulation_status", False, {"error": str(exc)})
 
-    # Step 11: list results
+    # Step 11: save project to .fsp
+    smoke_fsp = output_dir / "smoke_model.fsp"
+    try:
+        resp = requests.post(f"{rpc_url}/project/save", json={"path": str(smoke_fsp)}, timeout=10)
+        record_step("project_save", resp.json().get("ok", False), resp.json())
+    except Exception as exc:
+        record_step("project_save", False, {"error": str(exc)})
+
+    # Step 12: list results
     try:
         resp = requests.get(f"{rpc_url}/results", timeout=5)
         record_step("result_list", resp.json().get("ok", False), resp.json())
     except Exception as exc:
         record_step("result_list", False, {"error": str(exc)})
 
-    # Step 12: read one result
+    # Step 13: read one result value
     try:
-        resp = requests.get(f"{rpc_url}/results/mon/T", timeout=5)
-        record_step("result_read", resp.json().get("ok", False), resp.json())
+        resp = requests.get(f"{rpc_url}/results/mon/T/value", timeout=5)
+        record_step("result_read_value", resp.json().get("ok", False), resp.json())
     except Exception as exc:
-        record_step("result_read", False, {"error": str(exc)})
+        record_step("result_read_value", False, {"error": str(exc)})
+
+    # Step 14: download result file
+    try:
+        resp = requests.get(f"{rpc_url}/results/smoke_report.json", timeout=5)
+        if resp.status_code == 200:
+            dl_path = output_dir / "downloaded_results.json"
+            dl_path.write_bytes(resp.content)
+            record_step("result_download", True, {"path": str(dl_path), "size": len(resp.content)})
+        else:
+            record_step("result_download", False, {"http_status": resp.status_code})
+    except Exception as exc:
+        record_step("result_download", False, {"error": str(exc)})
 
     # Final: determine overall status
     all_ok = all(s["success"] for s in report["steps"])

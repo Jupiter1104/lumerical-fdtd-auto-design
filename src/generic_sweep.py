@@ -10,10 +10,8 @@ produces deterministic plan packets with fingerprints.
 from __future__ import annotations
 
 import copy
-import hashlib
 import itertools
-import math
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 from .device_recipe import compile_recipe, validate_recipe
 from .fdtd_schema import fingerprint_json, stable_json_dumps
@@ -24,69 +22,25 @@ from .fdtd_schema import fingerprint_json, stable_json_dumps
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _expand_range(start: float, stop: float, step: float) -> List[float]:
-    """Expand a range specification into a list of values.
+def _expand_range(start: float, stop: float, count: int) -> List[float]:
+    """Expand a range specification into *count* uniformly spaced values.
 
-    Inclusive start and stop.  Uses ``n = round((stop - start) / step) + 1``
-    and returns ``[start + i*step for i in range(n)]``.
+    Inclusive start and stop.  The last value is forced to *stop* exactly.
 
-    Raises :exc:`ValueError` if step is not positive.
+    Raises :exc:`ValueError` if *count* < 2.
     """
-    if step <= 0:
-        raise ValueError(f"Range step must be positive, got {step!r}")
-
-    n = round((stop - start) / step) + 1
-    if n < 1:
-        n = 1
+    if count < 2:
+        raise ValueError(f"Range count must be >= 2, got {count!r}")
 
     values: List[float] = []
-    for i in range(n):
-        v = start + i * step
-        # Round to suppress floating-point artefacts while preserving
-        # the precision implied by the step magnitude.
-        v = _round_value(v, step)
+    for i in range(count):
+        v = start + (stop - start) * i / (count - 1)
         values.append(v)
 
-    # Ensure the final value is exactly *stop* (inclusive guarantee).
-    if values:
-        values[-1] = float(stop)
+    # Force the last value to *stop* exactly (inclusive guarantee).
+    values[-1] = float(stop)
 
     return values
-
-
-def _round_value(v: float, step: float) -> float:
-    """Round *v* to a precision appropriate for the step magnitude."""
-    # Determine the number of decimal places from the step.
-    # We use the step's string representation to count decimals.
-    decimals = _count_step_decimals(step)
-    if decimals is not None:
-        return round(v, decimals)
-    # Fallback: round to 12 significant digits to squash float artefacts.
-    return round(v, 12)
-
-
-def _count_step_decimals(step: float) -> Optional[int]:
-    """Count decimal places in *step* for rounding purposes.
-
-    Returns *None* when the step is best handled by significant-figure
-    rounding (scientific-notation values).
-    """
-    # Use repr to get a precise string, then convert to non-scientific form
-    s = repr(step)
-    if "e" in s.lower():
-        # Scientific notation — count mantissa decimals and adjust for exponent
-        mantissa, exp = s.lower().split("e")
-        exp = int(exp)
-        if "." in mantissa:
-            mantissa_dec = len(mantissa.split(".")[1])
-        else:
-            mantissa_dec = 0
-        # decimals = mantissa_dec - exp (e.g., 7.5e-08: mantissa_dec=1, exp=-8 → 9)
-        return max(0, mantissa_dec - exp)
-    else:
-        if "." in s:
-            return len(s.split(".")[1])
-        return 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -114,7 +68,7 @@ def _expand_cartesian_product(params: List[dict]) -> List[dict]:
             value_lists.append(list(p["values"]))
         elif "range" in p:
             r = p["range"]
-            value_lists.append(_expand_range(r["start"], r["stop"], r["step"]))
+            value_lists.append(_expand_range(r["start"], r["stop"], r["count"]))
         else:
             raise ValueError(f"Parameter {name!r} has neither values nor range")
 
@@ -275,7 +229,7 @@ def _validate_sweep_param(p: Any, index: int):
             "code": "missing_parameter_spec",
             "message": (
                 f"Parameter {name!r} must have either 'values' (explicit list) "
-                f"or 'range' ({{start, stop, step}})"
+                f"or 'range' ({{start, stop, count}})"
             ),
         })
         return errors, warnings, 0
@@ -338,9 +292,9 @@ def _validate_sweep_param(p: Any, index: int):
 
         start = r.get("start")
         stop = r.get("stop")
-        step = r.get("step")
+        count = r.get("count")
 
-        for field in ("start", "stop", "step"):
+        for field in ("start", "stop", "count"):
             if field not in r:
                 errors.append({
                     "code": "invalid_range_spec",
@@ -353,29 +307,31 @@ def _validate_sweep_param(p: Any, index: int):
         if errors:
             return errors, warnings, 0
 
-        if not all(isinstance(x, (int, float)) and not isinstance(x, bool)
-                   for x in (start, stop, step)):
+        if not (isinstance(start, (int, float)) and not isinstance(start, bool)
+                and isinstance(stop, (int, float)) and not isinstance(stop, bool)):
             errors.append({
                 "code": "invalid_range_spec",
                 "message": (
-                    f"Parameter {name!r} range fields must be numeric"
+                    f"Parameter {name!r} range start/stop must be numeric"
                 ),
             })
             return errors, warnings, 0
 
-        if step <= 0:
+        if not isinstance(count, int) or isinstance(count, bool):
             errors.append({
                 "code": "invalid_range_spec",
-                "message": f"Parameter {name!r} range step must be positive",
+                "message": f"Parameter {name!r} range count must be an integer",
             })
             return errors, warnings, 0
 
-        try:
-            value_count = round((stop - start) / step) + 1
-        except Exception:
-            value_count = 0
-        if value_count < 1:
-            value_count = 1
+        if count < 2:
+            errors.append({
+                "code": "invalid_range_spec",
+                "message": f"Parameter {name!r} range count must be >= 2",
+            })
+            return errors, warnings, 0
+
+        value_count = count
 
     return errors, warnings, value_count
 
@@ -390,7 +346,7 @@ def _normalize_param_for_fingerprint(p: dict) -> dict:
         norm["range"] = {
             "start": r.get("start"),
             "stop": r.get("stop"),
-            "step": r.get("step"),
+            "count": r.get("count"),
         }
     return norm
 
@@ -633,7 +589,3 @@ def _apply_param_overrides(recipe: dict, overrides: Dict[str, float]) -> dict:
     return task_recipe
 
 
-def _sha256_hex(content: str) -> str:
-    """Return ``sha256:<hex>`` for a string."""
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    return f"sha256:{digest}"

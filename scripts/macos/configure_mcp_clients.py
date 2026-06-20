@@ -36,10 +36,11 @@ except ImportError:
 KNOWN_TARGETS = ("codex", "claude", "hermes")
 
 # Relative paths under $HOME for each client config
+# Claude Code uses the project-root .mcp.json, NOT ~/.claude/.mcp.json
 CLIENT_PATHS = {
-    "codex":  ".config/codex/mcp_servers.toml",
-    "claude": ".claude/.mcp.json",
-    "hermes": ".config/hermes/config.yaml",
+    "codex":  ".codex/config.toml",
+    "claude": None,  # special: project-root .mcp.json, handled in config_path()
+    "hermes": ".hermes/config.yaml",
 }
 
 BACKUP_SUFFIX_PATTERN = re.compile(r"\.backup-\d{8}-\d{6}$")
@@ -47,8 +48,16 @@ BACKUP_SUFFIX_PATTERN = re.compile(r"\.backup-\d{8}-\d{6}$")
 
 # ─── Path helpers ────────────────────────────────────────────────────────────
 
+_project_root_override: Path | None = None
+
+
 def project_root() -> Path:
-    """Find the project root by walking up from this script's directory."""
+    """Find the project root by walking up from this script's directory.
+
+    The ``--cwd`` CLI argument sets an override via ``set_project_root_override``.
+    """
+    if _project_root_override is not None:
+        return _project_root_override
     script = Path(__file__).resolve()
     for parent in script.parents:
         if (parent / ".mcp.json").exists() or (parent / "pyproject.toml").exists():
@@ -57,13 +66,25 @@ def project_root() -> Path:
     return script.parent.parent.parent
 
 
+def set_project_root_override(path: str | Path) -> None:
+    """Override the auto-detected project root (used by tests)."""
+    global _project_root_override
+    _project_root_override = Path(path)
+
+
 def home() -> Path:
     """Return $HOME as a Path."""
     return Path(os.environ["HOME"])
 
 
 def config_path(target: str) -> Path:
-    """Return the expected config file path for *target* under $HOME."""
+    """Return the expected config file path for *target*.
+
+    Codex and Hermes live under $HOME.
+    Claude Code config lives at the project root (``.mcp.json``).
+    """
+    if target == "claude":
+        return project_root() / ".mcp.json"
     return home() / CLIENT_PATHS[target]
 
 
@@ -372,6 +393,9 @@ def resolve_targets(target_arg: str):
 def main():
     args = parse_args()
     targets = resolve_targets(args.target)
+
+    if args.cwd:
+        set_project_root_override(args.cwd)
 
     server_entry = build_server_entry(args)
     writer = AtomicConfigWriter(targets, server_entry)

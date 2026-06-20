@@ -58,7 +58,19 @@ def test_runs_once():
 
 def test_reads_one_result():
     content = _read()
-    assert "/results/mon/T" in content
+    assert "/results/mon/T/value" in content
+
+
+def test_saves_fsp():
+    content = _read()
+    assert "/project/save" in content
+    assert "smoke_model.fsp" in content
+
+
+def test_downloads_result_file():
+    content = _read()
+    assert "downloaded_results.json" in content
+    assert "result_download" in content
 
 
 def test_writes_structured_result_file():

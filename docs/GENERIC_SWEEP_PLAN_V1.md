@@ -14,7 +14,7 @@ Generic SweepPlan 将 DeviceRecipe 的参数空间展开为可执行的 Cartesia
     "recipe_ref": {"recipe": {...}},
     "parameters": [
         {"name": "period", "values": [390e-9, 470e-9, 540e-9]},
-        {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}}
+        {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}}
     ],
     "max_tasks": 100
 }
@@ -30,13 +30,13 @@ Generic SweepPlan 将 DeviceRecipe 的参数空间展开为可执行的 Cartesia
 
 保持输入顺序，每个值产生一个 task。
 
-### Range（等差范围）
+### Range（等距范围）
 
 ```json
-{"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}}
+{"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}}
 ```
 
-生成 `[0.2, 0.5, 0.8]`（含终点）。
+生成 `[0.2, 0.5, 0.8]`（含首尾，共 count 个等距点，最后值强制等于 stop）。count >= 2。
 
 ## Cartesian 展开
 
@@ -45,7 +45,7 @@ Generic SweepPlan 将 DeviceRecipe 的参数空间展开为可执行的 Cartesia
 ```json
 {"parameters": [
     {"name": "period", "values": [390e-9, 470e-9]},
-    {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "step": 0.3}}
+    {"name": "ratio", "range": {"start": 0.2, "stop": 0.8, "count": 3}}
 ]}
 ```
 

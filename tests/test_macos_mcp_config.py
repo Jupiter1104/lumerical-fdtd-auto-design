@@ -36,22 +36,34 @@ def temp_home():
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-def run_configure(*args):
-    """Run configure_mcp_clients.py with the given arguments."""
-    cmd = [sys.executable, str(CONFIGURE_SCRIPT)] + list(args)
+def run_configure(*args, cwd_override: Path = None):
+    """Run configure_mcp_clients.py with the given arguments.
+
+    When *cwd_override* is provided, passes --cwd so the Claude config
+    target writes to the temp project root instead of the real one.
+    """
+    cmd = [sys.executable, str(CONFIGURE_SCRIPT)]
+    if cwd_override is not None:
+        cmd.extend(["--cwd", str(cwd_override)])
+    cmd.extend(args)
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
 def codex_path(home: Path) -> Path:
-    return home / ".config" / "codex" / "mcp_servers.toml"
+    return home / ".codex" / "config.toml"
 
 
 def claude_path(home: Path) -> Path:
-    return home / ".claude" / ".mcp.json"
+    """Claude Code config lives at project root .mcp.json.
+
+    Tests must pass --cwd pointing to temp_home so the script uses
+    the temp directory as the project root.
+    """
+    return home / ".mcp.json"
 
 
 def hermes_path(home: Path) -> Path:
-    return home / ".config" / "hermes" / "config.yaml"
+    return home / ".hermes" / "config.yaml"
 
 
 # ─── Codex (TOML) ───────────────────────────────────────────────────────────
@@ -107,7 +119,7 @@ class TestClaudeConfig:
     def test_preserves_existing_servers(self, temp_home):
         """Existing servers in mcpServers must survive after writing fdtd."""
         p = claude_path(temp_home)
-        p.parent.mkdir(parents=True, exist_ok=True)
+
         existing = {
             "mcpServers": {
                 "existing-tool": {"command": "python", "args": ["-m", "some_module"]},
@@ -115,7 +127,7 @@ class TestClaudeConfig:
         }
         p.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
-        r = run_configure("--target", "claude")
+        r = run_configure("--target", "claude", cwd_override=temp_home)
         assert r.returncode == 0, r.stderr
 
         got = json.loads(p.read_text("utf-8"))
@@ -126,7 +138,7 @@ class TestClaudeConfig:
     def test_replaces_fdtd_entry(self, temp_home):
         """An existing fdtd entry should be replaced, not duplicated."""
         p = claude_path(temp_home)
-        p.parent.mkdir(parents=True, exist_ok=True)
+
         existing = {
             "mcpServers": {
                 "fdtd": {"command": "old", "args": [], "env": {"FDTD_RPC_URL": "old"}},
@@ -134,7 +146,7 @@ class TestClaudeConfig:
         }
         p.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
-        r = run_configure("--target", "claude")
+        r = run_configure("--target", "claude", cwd_override=temp_home)
         assert r.returncode == 0, r.stderr
 
         got = json.loads(p.read_text("utf-8"))
@@ -242,7 +254,7 @@ class TestAllTarget:
 
     def test_all_target_configures_three_clients(self, temp_home):
         """Running with --target all must produce all three config files."""
-        r = run_configure("--target", "all")
+        r = run_configure("--target", "all", cwd_override=temp_home)
         assert r.returncode == 0, r.stderr
 
         assert codex_path(temp_home).exists(), "Codex config missing"
