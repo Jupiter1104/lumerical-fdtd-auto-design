@@ -745,3 +745,11 @@
 - 修改：`fdtd_region` 创建脚本不再 `set("name", ...)`；power monitor 自动先设置 `override global monitor settings=1`；RPC 增加 `/project/save` 和 `/project/load` alias；minimal smoke 的 analysis group 使用空属性，result download 改为 `/results/mon/T/download`。
 - 验证：新增 5 个回归测试先红后绿；`compileall` 通过；`pytest -q` 全量通过 539 passed；参数文件验证保持 `physical_conclusion=false`。
 - 后续：Windows 端 `git pull --ff-only` 后重新执行 `scripts\windows\minimal_solver_smoke.py`。
+
+## 2026-06-20 - Windows minimal solver smoke 运行时收敛
+
+- 目标：修复 Windows 本机复测中 `/simulation/run` 超过 120 秒后被外部 `/session/close` 干扰，导致后续 save/result 级联失败的问题；仍只做单模型技术 smoke。
+- 现象：HEAD=67a2ca0 时，建结构、FDTD 区域、光源、监视器和 analysis group 均已通过；`/simulation/run` HTTP read timeout，日志显示仿真中途出现外部 `/session/close`，后续 `project_save`、`result_read_value`、`result_download` 报 `session_not_active`。
+- 修改：minimal smoke 显式设置低成本 FDTD 参数（`mesh accuracy=1`、`simulation time=50e-15`、`auto shutoff min=1e-3`），固定 source/monitor 位置和 spans，把 run timeout 提升到 300 秒；若 run 失败，立即落 `smoke_report.json` 并退出，避免级联误报。
+- 验证：静态回归测试先红后绿，`tests/test_minimal_solver_smoke_static.py` 聚焦验证通过。
+- 后续：Windows 端更新到新 HEAD 后，在没有其他 Agent/脚本调用 `/session/close` 的情况下重跑 manual smoke。

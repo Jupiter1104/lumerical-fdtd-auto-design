@@ -98,7 +98,15 @@ def main() -> int:
     try:
         resp = requests.post(f"{rpc_url}/objects", json={
             "object_type": "fdtd_region", "name": "fdtd",
-            "properties": {"x span": 2e-6, "y span": 2e-6, "z span": 1.5e-6},
+            "properties": {
+                "dimension": "3D",
+                "x span": 1.5e-6,
+                "y span": 1.5e-6,
+                "z span": 1.0e-6,
+                "mesh accuracy": 1,
+                "simulation time": 50e-15,
+                "auto shutoff min": 1e-3,
+            },
             "dry_run": False,
         }, timeout=10)
         record_step("fdtd_region", resp.json().get("ok", False), resp.json())
@@ -109,7 +117,15 @@ def main() -> int:
     try:
         resp = requests.post(f"{rpc_url}/sources", json={
             "source_type": "plane_source", "name": "src",
-            "properties": {"wavelength start": 1.5e-6, "wavelength stop": 1.6e-6},
+            "properties": {
+                "injection axis": "z",
+                "direction": "backward",
+                "x span": 1.2e-6,
+                "y span": 1.2e-6,
+                "z": 0.45e-6,
+                "wavelength start": 1.5e-6,
+                "wavelength stop": 1.6e-6,
+            },
             "dry_run": False,
         }, timeout=10)
         record_step("source_create", resp.json().get("ok", False), resp.json())
@@ -120,7 +136,12 @@ def main() -> int:
     try:
         resp = requests.post(f"{rpc_url}/monitors", json={
             "monitor_type": "power_monitor", "name": "mon",
-            "properties": {"frequency points": 5},
+            "properties": {
+                "x span": 1.2e-6,
+                "y span": 1.2e-6,
+                "z": -0.45e-6,
+                "frequency points": 5,
+            },
             "dry_run": False,
         }, timeout=10)
         record_step("monitor_create", resp.json().get("ok", False), resp.json())
@@ -139,11 +160,20 @@ def main() -> int:
         record_step("analysis_group_create", False, {"error": str(exc)})
 
     # Step 9: run simulation once
+    run_ok = False
     try:
-        resp = requests.post(f"{rpc_url}/simulation/run", json={}, timeout=120)
-        record_step("simulation_run", resp.json().get("ok", False), resp.json())
+        resp = requests.post(f"{rpc_url}/simulation/run", json={}, timeout=300)
+        payload = resp.json()
+        run_ok = payload.get("ok", False)
+        record_step("simulation_run", run_ok, payload)
     except Exception as exc:
         record_step("simulation_run", False, {"error": str(exc)})
+
+    if not run_ok:
+        report["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _write_report(output_dir, report)
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 1
 
     time.sleep(0.5)
 

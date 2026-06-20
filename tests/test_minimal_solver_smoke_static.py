@@ -32,18 +32,25 @@ def test_creates_one_fixed_structure():
 def test_creates_one_fdtd_region():
     content = _read()
     assert "fdtd_region" in content
+    assert '"mesh accuracy": 1' in content
+    assert '"simulation time": 50e-15' in content
+    assert '"auto shutoff min": 1e-3' in content
 
 
 def test_creates_one_source():
     content = _read()
     assert "/sources" in content
     assert "source_type" in content
+    assert '"injection axis": "z"' in content
+    assert '"direction": "backward"' in content
 
 
 def test_creates_one_monitor():
     content = _read()
     assert "/monitors" in content
     assert "monitor_type" in content
+    assert '"x span": 1.2e-6' in content
+    assert '"z": -0.45e-6' in content
 
 
 def test_creates_one_analysis_group():
@@ -56,6 +63,13 @@ def test_creates_one_analysis_group():
 def test_runs_once():
     content = _read()
     assert "/simulation/run" in content
+    assert "timeout=300" in content
+
+
+def test_aborts_after_simulation_run_failure():
+    content = _read()
+    assert 'if not run_ok:' in content
+    assert 'return 1' in content
 
 
 def test_reads_one_result():
