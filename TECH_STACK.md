@@ -154,45 +154,50 @@ jobs/<job_id>/
 src/
 ├── server.py              # FastMCP 入口
 ├── tools/
-│   ├── session.py         # fdtd_health, fdtd_session_start/close/pause
-│   ├── model.py           # fdtd_save, fdtd_load
-│   ├── geometry.py        # FDTD region, rectangle, circle
-│   ├── simulation.py      # fdtd_sweep_config_get/set, fdtd_sweep_run/status/monitor
-│   ├── analysis.py        # fdtd_results_list, fdtd_results_download
+│   ├── session.py         # health/session lifecycle
+│   ├── project.py         # project new/load/save/status
+│   ├── objects.py         # typed object CRUD
+│   ├── sources.py         # typed source CRUD
+│   ├── monitors.py        # typed monitor CRUD
+│   ├── analysis_groups.py # analysis group create/get/update
+│   ├── recipes.py         # DeviceRecipe validate/compile/build
+│   ├── generic_sweeps.py  # Generic SweepPlan validate/plan/start
+│   ├── plans.py           # SimulationPlan validate/approve/start
+│   ├── jobs.py            # persistent job tools
+│   ├── analysis.py        # results list/download
 │   └── export_.py         # GDS/data export
 ├── knowledge/
 │   ├── embedded.py        # 器件模板 + 故障排除 + 最佳实践
 │   └── prompts/
 │       ├── lumerical_api.md   # Lumerical API 速查
+│       ├── lumerical_analysis_groups.md # Object Library / analysis group 规则
 │       └── workflow.md        # 仿真工作流指南
 └── rpc_client/
     └── client.py          # Windows RPC HTTP 客户端
 scripts/
-└── smoke_test.py          # 7 步端到端验证
+├── v1_smoke_test.py
+└── windows/minimal_solver_smoke.py
 tests/
 ├── test_rpc_server_contract.py
 ├── test_rpc_client_contract.py
 ├── test_mcp_registration.py
-└── test_v1_smoke.py
+└── test_mcp_stdio_acceptance.py
 rpc_server.py              # ← 本文件在 Windows 端，Mac 端不运行
 ```
 
-### MCP 工具一览（29 个）
+### MCP 工具一览（69 个）
 
-| 模块 | 工具 |
-|---|---|
-| Session | `fdtd_health`, `fdtd_session_start(hide)`, `fdtd_session_pause(seconds)`, `fdtd_session_close` |
-| Model | `fdtd_save`, `fdtd_load` |
-| Geometry | `fdtd_add_fdtd_region`, `fdtd_add_rect`, `fdtd_add_circle` |
-| Jobs | `fdtd_job_plan`, `fdtd_job_start`, `fdtd_job_status`, `fdtd_job_tasks`, `fdtd_job_resume` |
-| Metasurface Jobs | `fdtd_metasurface_sweep_plan`, `fdtd_metasurface_sweep_start` |
-| SimulationPlan | `fdtd_simulation_plan_validate`, `fdtd_simulation_plan_approve`, `fdtd_simulation_plan_start` |
-| Sweep (legacy) | `fdtd_sweep_config_get`, `fdtd_sweep_config_set(...)`, `fdtd_sweep_run(phases)`, `fdtd_sweep_status(task_id)`, `fdtd_sweep_monitor(task_id)` |
-| Results | `fdtd_results_list`, `fdtd_results_download(filepath)` |
-| Export | `fdtd_export_gds`, `fdtd_export_data` |
-| Knowledge | `fdtd_device_template`, `fdtd_list_devices`, `fdtd_troubleshoot`, `fdtd_best_practices` |
+交付进程由 `src.server.main()` 调用 `register_deliverable_tools()`；`collect_registered_tool_names_for_tests()` 和 `tests/test_mcp_registration.py` 锁定精确 69-tool 注册表。用户向导见 `docs/MCP_USER_GUIDE.md`。类别覆盖：
 
-`model.py`、`geometry.py` 和 `export_.py` 已完成注册。离线验证命令：
+- session/project/object/material/solver/source/monitor/analysis/result
+- raw `eval/getv/setv`
+- DeviceRecipe、Generic SweepPlan、SimulationPlan
+- persistent jobs 与 metasurface 便捷 job
+- export 与 knowledge
+
+`fdtd_analysis_group_create` 支持官方 Object Library 优先字段：`prefer_builtin`、`require_builtin`、`script_id`。`script_id` 必须来自官方资料或目标 Windows 版本 `addobject;` 枚举。
+
+离线验证命令：
 
 ```bash
 python3 -m venv .venv

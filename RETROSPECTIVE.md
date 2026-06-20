@@ -34,7 +34,7 @@
 - 有效做法：先把“自然语言 → SimulationPlan → 审批 → 真实 job → evidence review”闭环在 metasurface unit-cell 上跑通，再扩大设计空间。Stage C1/C2 已证明软件链可审计，C3 已形成 25-task 有界审批包。
 - 无效做法：把 2×2 结果误当成物理设计库。C2 的 phase span 只有约 `1.3273 rad`，只能证明自动化链路，不足以支撑最终 2π phase library。
 - 可复用经验：后续每次扩大 sweep 或改变物理设置，都应先形成新的 packet 和人工审批；质量报告、物理审核和下一轮建议必须分离。
-- 下一步调整：基础设施已够用，不再无依据扩建。短期等待 C3 exact packet 批准后完成 C4/C5（真实 25-task sweep、phase/transmission 设计级分析）；中期补 typed modeling recipes。
+- 下一步调整：基础设施已够用，不再无依据扩建。当前优先维护和扩展可交付 MCP/typed modeling recipes；C4/C5 真实 sweep 仅在用户单独批准 exact C3 packet 后作为可选物理工作流执行。
 
 ## 2026-06-20 - 0.1.0 MCP 交付验收
 
@@ -50,24 +50,24 @@
   - 三层测试（unit/fake-backend/MCP-stdio）确保各层独立可验证。
   - 指纹门（DeviceRecipe compile_fingerprint、SweepPlan packet_fingerprint）防止篡改请求。
 - 下一步调整：
-  - Windows 手动 smoke：运行 `scripts\windows\minimal_solver_smoke.py` 验证真实 RPC→lumapi→solve 链路。
-  - 真实 physical-use workflow：在 C3 packet 批准后进入 C4/C5 真实 sweep。
+  - Windows 手动 smoke 已通过：`scripts\windows\minimal_solver_smoke.py` 返回 `technical_smoke=true`、`physical_conclusion=false`、`ok=true`，14/14 步完成。
+  - 真实 C4/C5 sweep 是独立、可选的物理工作流，只有用户批准 exact C3 packet 后才进入，不作为 MCP 交付前置条件。
   - Type modeling recipes 补充更多器件类型。
 
 ### 离线验证
 
 ```bash
 .venv/bin/python -m compileall -q rpc_server.py src scripts tests  # EXIT 0
-.venv/bin/python -m pytest -q                                     # 530 passed
+.venv/bin/python -m pytest -q                                     # 548 passed
 ```
 
-### Windows solver smoke 待执行
+### Windows solver smoke
 
 ```cmd
 "F:\Program Files\Lumerical\v242\python\python.exe" scripts\windows\minimal_solver_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\fdtd-mcp\smoke"
 ```
 
-预期：`technical_smoke=true`，`physical_conclusion=false`。
+结果：2026-06-20 已通过，`technical_smoke=true`、`physical_conclusion=false`、`ok=true`；产物包含 `smoke_model.fsp`、`smoke_report.json`、`downloaded_results.json`。
 
 ### Known Non-Goals（仍为非目标）
 

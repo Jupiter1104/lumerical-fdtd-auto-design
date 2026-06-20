@@ -22,7 +22,7 @@
 | 14 | 配置网格 | `fdtd_mesh_diagnose` | 检查网格精度 |
 | 15 | 添加光源 | `fdtd_source_create` | 添加 plane/gaussian/mode source |
 | 16 | 添加监视器 | `fdtd_monitor_create` | 添加 DFT/index/time monitor |
-| 17 | 添加分析组 | `fdtd_analysis_group_create` | 添加 S 参数分析组 |
+| 17 | 添加分析组 | `fdtd_analysis_group_create` | 自定义 `addanalysisgroup`；提供已确认 `script_id` 时可优先官方 Object Library `addobject` |
 | 18 | 运行仿真 | `fdtd_simulation_run` | 启动求解 |
 | 19 | 读取结果 | `fdtd_result_read` | 提取 S 参数/场数据 |
 | 20 | 保存/导出 | `fdtd_project_save` / `fdtd_results_download` | 保存 .fsp 和结果文件 |
@@ -58,3 +58,23 @@
 - 光源类型 → `fdtd_source_create`
 - 监视器类型 → `fdtd_monitor_create`
 - 分析组 → `fdtd_analysis_group_create`
+
+## Analysis Group 官方库优先
+
+`fdtd_analysis_group_create` 支持以下字段：
+
+```json
+{
+  "name": "analysis_builtin",
+  "properties": {},
+  "dry_run": true,
+  "prefer_builtin": true,
+  "require_builtin": false,
+  "script_id": "power_transmission_box"
+}
+```
+
+- `prefer_builtin=true` 且提供 `script_id`：生成 `addobject("script_id")`。
+- `prefer_builtin=true` 但无 `script_id`：回退到 `addanalysisgroup`，响应披露 `fallback_used=true`。
+- `require_builtin=true` 但无 `script_id`：返回 `builtin_analysis_group_required`。
+- `script_id` 不由 Agent 猜测，必须来自 Ansys 官方文档或目标 Windows 版本 `addobject;` 枚举。

@@ -5,7 +5,9 @@
 - 代码状态：Windows clone 已同步并加载 raw lumapi `close()` detach/timeout 修复。
 - 离线验证：Mac 上新增 `/jobs/*` 离线契约测试，不依赖 Lumerical。
 - Windows 状态：开发期 `5004` 已完成真实 v1 smoke 和真实 2×2 原生 `metasurface-sweep` 验证；当前默认端口为 `5000`，Windows 已同步并完成 health/mock smoke。
+- 0.1.0 solver smoke：Windows minimal solver smoke 已通过，`technical_smoke=true`、`physical_conclusion=false`、`ok=true`，14/14 步完成。
 - Job 状态：`/jobs/start` 支持短 `real geometry-smoke`；`metasurface-sweep` 已支持逐 sample task、原生 Phase 1-4、质量报告和 evidence index。真实 sweep 在新 v1 服务内异步执行，启动成功返回 HTTP 202。每个真实 sweep manifest 记录模板路径、大小、mtime 和 SHA-256。
+- Analysis group 状态：`/analysis-groups` 支持 `prefer_builtin/require_builtin/script_id`；有已确认 `script_id` 时用 Object Library `addobject`，否则按策略回退或报错。
 - 通知状态：持久 `/jobs/plan` 和 mock/real 终态已接入飞书 best-effort 通知，并于 2026-06-20 通过 Windows mock smoke；Agent 取得 `job_id` 后默认不轮询。
 - 过渡期：旧 Autosweep 只作为历史 baseline，不再是仓库内 `rpc_server.py` 的运行时依赖；本文件只描述新 v1 服务。
 
@@ -58,6 +60,9 @@
 | POST | `/geometry/fdtd-region` | 添加 FDTD 区域 |
 | POST | `/geometry/rectangle` | 添加矩形 |
 | POST | `/geometry/circle` | 添加圆形 |
+| POST | `/analysis-groups` | 创建 analysis group；body 支持 `name`、`properties`、`dry_run`、`prefer_builtin`、`require_builtin`、`script_id` |
+| GET | `/analysis-groups/<name>` | 读取 analysis group 摘要 |
+| PUT | `/analysis-groups/<name>` | 更新 analysis group properties |
 | POST | `/jobs/plan` | 创建 planned job，落盘 task 清单但不执行 |
 | POST | `/jobs/start` | 创建并执行 mock 或 real job；`real metasurface-sweep` 异步返回 `202 + job_id` |
 | GET | `/jobs/<job_id>` | 读取 manifest/status/summary |
@@ -65,6 +70,24 @@
 | POST | `/jobs/<job_id>/resume` | 仅重试 pending/failed task |
 
 MCP 新工作流优先使用 `fdtd_job_*` 和 `fdtd_metasurface_sweep_*`；旧 `fdtd_sweep_*` 工具仅保留为 legacy compatibility，不对应当前新 `rpc_server.py` 的 `/jobs/*` 主路径。
+
+### `/analysis-groups` 官方库优先字段
+
+```json
+{
+  "name": "analysis_builtin",
+  "properties": {},
+  "dry_run": true,
+  "prefer_builtin": true,
+  "require_builtin": false,
+  "script_id": "power_transmission_box"
+}
+```
+
+- `prefer_builtin=true + script_id`：生成 `addobject("script_id")`。
+- `prefer_builtin=true` 且无 `script_id`：回退 `addanalysisgroup`，响应含 `fallback_used=true`。
+- `require_builtin=true` 且无 `script_id`：HTTP 400，`error.type=builtin_analysis_group_required`。
+- `script_id` 必须来自官方资料或目标 Windows 版本 `addobject;` 枚举，不由 Agent 猜测。
 
 ## 兼容旧路由
 

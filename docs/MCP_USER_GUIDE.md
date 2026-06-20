@@ -89,7 +89,7 @@ curl $FDTD_RPC_URL/health
 | Solver | 6 | fdtd_solver_get/update, fdtd_mesh_diagnose, fdtd_resource_estimate, fdtd_simulation_run/status |
 | Sources | 3 | fdtd_source_create/get/update |
 | Monitors | 3 | fdtd_monitor_create/get/update |
-| Analysis | 3 | fdtd_analysis_group_create/get/update |
+| Analysis | 3 | fdtd_analysis_group_create/get/update；支持官方 Object Library `script_id` 优先 |
 | Results | 4 | fdtd_result_list/describe/read, fdtd_results_download |
 | Raw | 3 | fdtd_eval/getv/setv |
 | Recipes | 3 | fdtd_device_recipe_validate/compile/build |
@@ -98,6 +98,21 @@ curl $FDTD_RPC_URL/health
 | Jobs | 7 | fdtd_job_plan/start/status/tasks/resume, fdtd_metasurface_sweep_plan/start |
 | Export | 2 | fdtd_export_gds/export_data |
 | Knowledge | 4 | fdtd_device_template, fdtd_list_devices, fdtd_troubleshoot, fdtd_best_practices |
+
+## Analysis Group 官方库优先示例
+
+```json
+{
+  "name": "analysis_builtin",
+  "properties": {},
+  "dry_run": true,
+  "prefer_builtin": true,
+  "require_builtin": false,
+  "script_id": "power_transmission_box"
+}
+```
+
+`script_id` 必须来自 Ansys 官方文档或 Windows v242 `addobject;` 枚举。未提供 `script_id` 时，`prefer_builtin=true` 会安全回退到自定义 analysis group；`require_builtin=true` 会报错。
 
 ## 运行模式
 

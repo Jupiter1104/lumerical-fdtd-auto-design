@@ -61,6 +61,24 @@ scripts\windows\stop_rpc.bat
 - 旧 `/session/stop` 返回弃用元数据。
 - 最终 health 显示 `connected=false`。
 
+## Minimal solver smoke
+
+运行一次固定低成本模型，验证 RPC → lumapi → solve → result → download 闭环。该 smoke 是技术验收，不产生物理结论。
+
+```cmd
+"F:\Program Files\Lumerical\v242\python\python.exe" scripts\windows\minimal_solver_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\fdtd-mcp\smoke"
+```
+
+若 `5000` 被 Windows 僵尸 TCP 条目临时锁死，可在启动 RPC 时改用其他端口，并同步修改 `--rpc`，例如 `http://127.0.0.1:5001`。
+
+成功标准：
+
+- `technical_smoke=true`
+- `physical_conclusion=false`
+- `ok=true`
+- 14/14 步通过：health、session_start、project_new、object_create、fdtd_region、source_create、monitor_create、analysis_group_create、simulation_run、simulation_status、project_save、result_list、result_read_value、result_download
+- 产物包含 `smoke_model.fsp`、`smoke_report.json`、`downloaded_results.json`
+
 ## Metasurface 模板安装
 
 首次运行真实原生 `metasurface-sweep` 前，安装已验证模板：
@@ -154,9 +172,11 @@ It must not start RPC real mode or run FDTD.
 - Windows clone 已同步并加载 close detach/timeout 修复。
 - `5004` 已完成开发期真实验证：v1 smoke 全流程通过，真实 2×2 原生 `metasurface-sweep` 结果 4/4 valid、quality `pass`。
 - 新服务默认端口已切换为 `5000`；Windows 同步后用 `restart_rpc.bat` 启动。
-- 最新 smoke 产物：`smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
+- 0.1.0 minimal solver smoke 产物：`%LOCALAPPDATA%\fdtd-mcp\smoke\smoke_model.fsp`、`smoke_report.json`、`downloaded_results.json`。
 - 新代码已支持原生逐 sample `metasurface-sweep`，`real` 启动返回 HTTP 202。
-- C3 25-task production sweep packet 已生成并验证，当前等待 exact packet 人工批准。
+- 0.1.0 minimal solver smoke 已通过，证明通用建模/求解/结果下载闭环可用；该 smoke 不作为物理结论。
+- analysis group 创建支持官方 Object Library 优先：提供已确认 `script_id` 时使用 `addobject("script_id")`，否则按 `prefer_builtin/require_builtin` 策略回退或报错。
+- 可选物理工作流的 C3 25-task production sweep packet 已生成并冻结；未获 exact packet 人工批准不得启动。
 - 飞书持久 job 通知已通过 Windows mock smoke；Agent 提交后默认不轮询。
 - 当前执行基础设施已够用，后续优先推进批准后的真实设计工作流。
 
