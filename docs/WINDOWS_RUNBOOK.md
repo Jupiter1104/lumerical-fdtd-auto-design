@@ -167,6 +167,32 @@ Expected:
 This command reads JSON evidence and writes `runtime\approvals\real_2x2_preflight.json`.
 It must not start RPC real mode or run FDTD.
 
+## Object Library analysis group smoke
+
+验证 Object Library catalog 枚举、intent 匹配、探针、配置和 runsetup readback 全链路，不运行求解：
+
+```cmd
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+git pull --ff-only
+scripts\windows\restart_rpc.bat
+"F:\Program Files\Lumerical\v242\python\python.exe" scripts\windows\object_library_analysis_group_smoke.py --rpc http://127.0.0.1:5000 --output "%LOCALAPPDATA%\fdtd-mcp\object-library-smoke"
+```
+
+若 `5000` 被僵尸 TCP 条目锁死，改用 `--rpc http://127.0.0.1:5001`。
+
+若 v242 实际 ID tokenize 方式与默认 `transmission` intent 不匹配，可用 `--intent-kind`、`--output-name` 和 `--script-id` 参数。`--script-id` 仍由 RPC server 验证是否存在于 live catalog。
+
+成功标准（不运行求解）：
+
+- `technical_smoke=true`
+- `physical_conclusion=false`
+- `catalog_enumerated=true`
+- `probe_restore_verified=true`
+- `setup_verified=true`
+- `ok=true`
+
+产物：`object_library_model.fsp`、`object_library_smoke_report.json`。
+
 ## 当前已知状态（2026-06-20）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。

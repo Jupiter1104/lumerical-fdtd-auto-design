@@ -775,3 +775,25 @@
 - 目标：实现 `fdtd_analysis_group_create` 在用户提供已确认 `script_id` 时优先走官方 Object Library `addobject("script_id")`，否则安全回退自定义 `addanalysisgroup`。
 - 范围：RPC `/analysis-groups`、Mac `RpcClient`、MCP wrapper 和 DeviceRecipe 编译透传 `prefer_builtin`、`require_builtin`、`script_id`。
 - 约束：不新增 MCP 工具，不猜测官方库 ID，不启动 FDTD solve；`require_builtin=true` 且无 `script_id` 返回结构化错误。
+
+## 2026-06-21 - 自主 Object Library analysis group 工作流
+
+- 目标：实现从会话枚举到 readback 验证的完整自动化 Object Library 工作流，不依赖预先确认的 `script_id`。
+- 实现：
+  - 新增 `src/object_library_catalog.py`：首次 session 枚举 live v242 catalog，持久化到 `runtime/object_library_catalog.json`。
+  - 新增 `src/analysis_group_selection.py`：intent 解析、确定性短列表生成（`shortlist_candidates`）、探针后 confidence 排序（`rank_probed_candidates`）、高置信度选择（`choose_high_confidence`）。
+  - 新增 `src/analysis_group_runtime.py`：`AnalysisGroupService` 协调 enumerate → shortlist → probe → configure → runsetup → readback 全流程；创建 `verified analysis group`、参数合并和读回验证。
+  - 新增 `src/analysis_group_inspector.py`：只读 `ObjectLibraryInspector` 探针，获取 script properties/results/settable 属性，确保 `restore_verified`。
+  - 新增 `tests/test_object_library_catalog.py`、`tests/test_analysis_group_selection.py`：覆盖 catalog 空/损坏/版本变化、shortlist 确定性、prefer/require 回退路径。
+  - 新增 `tests/test_analysis_group_runtime.py`、`tests/test_analysis_group_builtin.py`：覆盖 fake backend 下完整 workflow、参数验证、setup 失败和回退。
+  - DeviceRecipe build 注入 `runtime_instructions` 和 `execution_fingerprint`。
+  - `src/tools/analysis_groups.py` 透传 `analysis_intent`、`recipe_context`、`parameter_overrides`。
+- 验证：
+  - `.venv/bin/python -m compileall -q rpc_server.py src scripts tests`：通过。
+  - `.venv/bin/python -m pytest -q`：全量通过（539+ passed）。
+  - `.venv/bin/python -m pytest tests/test_object_library_smoke_static.py -q`：3 passed。
+  - 工具数保持 69/69。
+  - Windows `object_library_analysis_group_smoke.py` 已创建但尚未在 Windows 上执行（Task 10 Step 8 留给人工）。
+- 后续：
+  - Windows v242 manual smoke 执行并确认 `catalog_enumerated=true`、`probe_restore_verified=true`、`setup_verified=true`、`ok=true`。
+  - 若 v242 实际 ID 与默认 `transmission` intent 不匹配，用 `--intent-kind` / `--script-id` 参数调整并记录真实 ID / catalog identity。

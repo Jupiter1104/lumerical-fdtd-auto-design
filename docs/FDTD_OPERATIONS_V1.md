@@ -61,20 +61,39 @@
 
 ## Analysis Group 官方库优先
 
-`fdtd_analysis_group_create` 支持以下字段：
+`fdtd_analysis_group_create` 支持自主 Object Library 工作流：
+
+### 六阶段流程
+
+1. **enumerate**：`/session/start` 返回 `object_library.script_id_count`；首次 session 将完整 catalog 写入 `runtime/object_library_catalog.json`。
+2. **shortlist**：`analysis_intent` + `recipe_context` 从 catalog 产生确定性短列表，每个候选带 `score` 和 `match_reasons`。
+3. **probe**：高置信度候选通过只读 `inspector` 获取 `setup_properties`、`analysis_properties`、`analysis_results`、`settable_properties`；`restore_verified` 确认探针后模型已恢复原状。
+4. **configure**：`resolve_analysis_parameters` 按安全优先级合并参数：`parameter_overrides` > `recipe_context` > 探针默认值。重名参数报 `parameter_conflict`，未知参数报 `unknown_analysis_parameter`。
+5. **runsetup**：执行 analysis group setup script，捕获异常。失败且 `require_builtin=true` 时删除对象并报 `analysis_setup_failed`。
+6. **readback**：逐参数 `getnamed` 读回实际值并与期望值比对；任一参数不匹配（1e-12 容差）报 `analysis_parameter_verification_failed`。
+
+### 请求字段
 
 ```json
 {
   "name": "analysis_builtin",
-  "properties": {},
-  "dry_run": true,
+  "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+  "recipe_context": {
+    "solver": {"x span": 1.2e-6, "y span": 1.2e-6, "z span": 1.0e-6},
+    "monitors": [{"type": "power_monitor", "name": "mon"}],
+    "outputs": ["T"],
+    "fom": {"result": "T"}
+  },
+  "parameter_overrides": {},
   "prefer_builtin": true,
-  "require_builtin": false,
-  "script_id": "power_transmission_box"
+  "require_builtin": true,
+  "script_id": "",
+  "properties": {},
+  "dry_run": false
 }
 ```
 
-- `prefer_builtin=true` 且提供 `script_id`：生成 `addobject("script_id")`。
-- `prefer_builtin=true` 但无 `script_id`：回退到 `addanalysisgroup`，响应披露 `fallback_used=true`。
+- `prefer_builtin=true`：高置信度匹配自动使用官方 Object Library；低置信度回退到 `addanalysisgroup`，响应披露 `fallback_used=true`。
+- `require_builtin=true`：无可用官方候选或 setup/verification 失败时报错，不回退。
 - `require_builtin=true` 但无 `script_id`：返回 `builtin_analysis_group_required`。
-- `script_id` 不由 Agent 猜测，必须来自 Ansys 官方文档或目标 Windows 版本 `addobject;` 枚举。
+- `script_id` 不由 Agent 猜测；显式传入时仍由 RPC server 验证是否存在于 live catalog。

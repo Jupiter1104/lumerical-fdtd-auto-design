@@ -214,6 +214,13 @@
 - 修复：把经过实测的 `30s/600s` 固化到 `minimal_solver_smoke.py` 和静态测试；`5001` 仅作为命令行 `--rpc` workaround，不改默认端口。
 - 预防：每次 Windows manual smoke 通过后，审查报告里的“本次修改”必须逐项对照 git diff；属于通用容差的改入仓库，属于现场绕行的只写入日志。
 
+## 2026-06-21 - 未探针的候选不能仅凭 ID 匹配达到最终置信度
+
+- 现象：Object Library catalog 枚举后，Agent 可能直接选 `script_id` 匹配度最高的候选并调用 `addobject`，跳过探针和 setup/readback 验证。
+- 根因：catalog 短列表只提供基于 `analysis_intent` 的 token 匹配得分，不能证明候选的参数、setup 行为和 readback 值与当前模型兼容。官方库中 theme 名匹配但 properties 签名不兼容的 analysis group 会静默产生错误分析结果。
+- 修复：必须执行两阶段评分：shortlist 阶段产出的 `score` 仅作为筛选门（高置信度候选进入探针阶段）；探针后 `rank_probed_candidates` 结合真实 `setup_properties`/`analysis_results` 证据重新评分，只有探针后 confidence 仍高的候选才进入 configure/runsetup/readback。未通过探针的候选即使 ID token 匹配度高也不能进入 setup。
+- 预防：`choose_high_confidence` 只接受已探针候选；任何未探针的候选 `score` 不得当作最终可信度。
+
 ## 2026-06-20 - Object Library script_id 不可由 Agent 猜测
 
 - 现象：用户要求“添加分析组时优先使用官方自带分析组”，容易把官方示例主题误写成可直接 `addobject("...")` 的 `script_id`。

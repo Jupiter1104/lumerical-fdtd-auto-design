@@ -101,18 +101,48 @@ curl $FDTD_RPC_URL/health
 
 ## Analysis Group 官方库优先示例
 
+通过 `analysis_intent` 描述分析目标，由系统自动枚举、匹配、探针、配置和验证官方 analysis group：
+
 ```json
 {
   "name": "analysis_builtin",
-  "properties": {},
-  "dry_run": true,
+  "analysis_intent": {
+    "kind": "transmission",
+    "outputs": ["T"]
+  },
+  "recipe_context": {
+    "solver": {
+      "x span": 1.2e-6,
+      "y span": 1.2e-6,
+      "z span": 1.0e-6
+    },
+    "monitors": [{"type": "power_monitor", "name": "mon"}],
+    "outputs": ["T"],
+    "fom": {"result": "T"}
+  },
+  "parameter_overrides": {},
   "prefer_builtin": true,
-  "require_builtin": false,
-  "script_id": "power_transmission_box"
+  "require_builtin": true,
+  "script_id": "",
+  "properties": {},
+  "dry_run": false
 }
 ```
 
-`script_id` 必须来自 Ansys 官方文档或 Windows v242 `addobject;` 枚举。未提供 `script_id` 时，`prefer_builtin=true` 会安全回退到自定义 analysis group；`require_builtin=true` 会报错。
+### 决策流程
+
+1. **enumerate**：首次 session 枚举 live v242 Object Library catalog，写入 `runtime/object_library_catalog.json`。
+2. **shortlist**：`analysis_intent` + `recipe_context` 从 catalog 中产出确定性候选列表及置信度。
+3. **probe**：高置信度候选通过只读探针获取真实 setup/analysis properties、results 和 settable 属性。
+4. **configure**：`parameter_overrides` 安全合并到探针参数中，优先级：`parameter_overrides` > `recipe_context` > 探针默认值。
+5. **runsetup**：运行 analysis group 的 setup script，获取实际返回值。
+6. **readback**：`getnamed` 读回每个 applied 参数并比对预期值。
+
+### 决策报告字段
+
+响应包含 `source`（`"builtin"` 或 `"custom"`）、`script_id`、`match_confidence`、`match_reasons`、`probe.restore_verified`、`setup_verified`、`candidates`、`fallback_used`、`fallback_reason` 和 `physical_conclusion`（始终 `false`）。
+
+`script_id` 必须来自 Ansys 官方文档或 Windows v242 `addobject;` 枚举。未提供 `script_id` 时由系统自动匹配；`prefer_builtin=true` 低置信度安全回退自定义 group；`require_builtin=true` 无可用官方候选时报错。
 
 ## 运行模式
 

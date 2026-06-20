@@ -71,11 +71,26 @@
 
 MCP 新工作流优先使用 `fdtd_job_*` 和 `fdtd_metasurface_sweep_*`；旧 `fdtd_sweep_*` 工具仅保留为 legacy compatibility，不对应当前新 `rpc_server.py` 的 `/jobs/*` 主路径。
 
-### `/analysis-groups` 官方库优先字段
+### `/analysis-groups` 自主 Object Library 字段
 
 ```json
 {
   "name": "analysis_builtin",
+  "analysis_intent": {
+    "kind": "transmission",
+    "outputs": ["T"]
+  },
+  "recipe_context": {
+    "solver": {
+      "x span": 1.2e-6,
+      "y span": 1.2e-6,
+      "z span": 1.0e-6
+    },
+    "monitors": [{"type": "power_monitor", "name": "mon"}],
+    "outputs": ["T"],
+    "fom": {"result": "T"}
+  },
+  "parameter_overrides": {},
   "properties": {},
   "dry_run": true,
   "prefer_builtin": true,
@@ -84,10 +99,41 @@ MCP 新工作流优先使用 `fdtd_job_*` 和 `fdtd_metasurface_sweep_*`；旧 `
 }
 ```
 
-- `prefer_builtin=true + script_id`：生成 `addobject("script_id")`。
-- `prefer_builtin=true` 且无 `script_id`：回退 `addanalysisgroup`，响应含 `fallback_used=true`。
-- `require_builtin=true` 且无 `script_id`：HTTP 400，`error.type=builtin_analysis_group_required`。
+- `prefer_builtin=true + script_id`：生成 `addobject("script_id")`；显式传入的 `script_id` 仍由 RPC server 验证是否存在于 live catalog。
+- `prefer_builtin=true` 且无 `script_id`：系统自动 enumerate → shortlist → probe → configure → runsetup → readback；低置信度回退 `addanalysisgroup`，响应含 `fallback_used=true`。
+- `require_builtin=true` 且无可用官方候选：HTTP 400，`error.type=builtin_analysis_group_required`。
+- `analysis_intent` 和 `recipe_context` 提供分析意图和设备上下文，用于在 catalog 中确定性匹配 analysis group。
+- `parameter_overrides` 按安全优先级合并：`parameter_overrides` > `recipe_context` > 探针默认值。冲突或未知参数分别报 `parameter_conflict` 和 `unknown_analysis_parameter`。
 - `script_id` 必须来自官方资料或目标 Windows 版本 `addobject;` 枚举，不由 Agent 猜测。
+
+### Session catalog status
+
+`/session/start` 响应携带 `object_library` 摘要：
+
+```json
+{
+  "object_library": {
+    "script_id_count": 42,
+    "identity": "v242_object_library_catalog",
+    "status": "enumerated",
+    "enumerated_at": "2026-06-21T...Z"
+  }
+}
+```
+
+- `script_id_count > 0`：catalog 枚举成功，`/analysis-groups` 可执行自主匹配。
+- `script_id_count == 0` 或 `status != "enumerated"`：catalog 不可用，`require_builtin=true` 会报错。
+
+### Analysis group 新增错误类型
+
+| HTTP | error.type | 触发条件 |
+|------|------------|----------|
+| 400 | `object_library_script_id_not_found` | 显式 `script_id` 不在 live catalog 中且 `require_builtin=true` |
+| 400 | `parameter_conflict` | `parameter_overrides` 与 `recipe_context` 对同一参数给出不同值 |
+| 400 | `unknown_analysis_parameter` | `parameter_overrides` 包含探针未知的参数 |
+| 400 | `intent_not_resolvable` | `analysis_intent` 无法产生任何候选 |
+| 409 | `analysis_parameter_verification_failed` | runsetup 后 `getnamed` 读回值与期望值不匹配 |
+| 409 | `analysis_setup_failed` | setup script 执行异常且 `require_builtin=true` |
 
 ## 兼容旧路由
 

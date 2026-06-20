@@ -71,14 +71,25 @@ for (i = 1:L) {
 
 ## MCP/Agent 设计含义
 
-第一版“官方自带分析组优先”不应内置未经验证的 script ID。推荐流程：
+当前已实现完整的自主 Object Library 工作流，不需要内置未经验证的 script ID：
 
-1. Windows v242 侧新增只读枚举：运行 `addobject;`，保存 Object Library 名称列表。
-2. 本地 registry 只保存已枚举且通过一次插入 smoke 的 `script_ID`。
-3. MCP 创建 analysis group 时：
-   - `prefer_builtin=true`：有匹配则 `addobject("script_ID")`，无匹配则回退 `addanalysisgroup`。
-   - `require_builtin=true`：无匹配时报错，不回退。
-4. 返回结果必须披露 `source=builtin|custom`、`script_id`、`fallback_used` 和匹配依据。
+1. **enumerate**：`/session/start` 在首次 session 自动运行 `addobject;` 枚举，保存 Object Library 名称列表到 `runtime/object_library_catalog.json`，并返回 `object_library.script_id_count`。
+2. **shortlist**：`analysis_intent` + `recipe_context` 从 catalog 产生确定性短列表，每项带 `score` 和 `match_reasons`。
+3. **probe**：高置信度候选通过只读 inspector 获取 `setup_properties`、`analysis_properties`、`analysis_results`、`settable_properties`；探针后 `restore_verified` 确认模型已恢复原状。
+4. **configure**：`parameter_overrides` 按安全优先级合并：`parameter_overrides` > `recipe_context` > 探针默认值；冲突报 `parameter_conflict`，未知参数报 `unknown_analysis_parameter`。
+5. **runsetup**：执行 analysis group setup script；失败且 `require_builtin=true` 时报 `analysis_setup_failed` 并从模型中删除对象。
+6. **readback**：逐参数 `getnamed` 读回实际值并与期望值比对；任一不匹配报 `analysis_parameter_verification_failed`（409）。
+
+MCP/RPC 决策报告包含：
+- `source=builtin|custom`
+- `script_id`
+- `match_confidence`、`match_reasons`
+- `probe.restore_verified`、`setup_verified`
+- `candidates`、`fallback_used`、`fallback_reason`
+- `catalog_identity`、`catalog_status`
+- `physical_conclusion=false`
+
+`prefer_builtin=true` 低置信度自动回退 `addanalysisgroup`；`require_builtin=true` 无匹配直接报错。
 
 ## 官方来源
 

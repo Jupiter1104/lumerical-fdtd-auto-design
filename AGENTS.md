@@ -40,7 +40,7 @@
 - **结果质量门**：solver 完成不等于任务通过。交付前必须生成结构化质量结论，并区分 `pass`、`warning`、`fail`。
 - **证据优先回传**：默认回传 manifest、status、summary、任务记录、标量结果和关键图；逐点 `.fsp` 只在调试或明确要求时传输。
 - **基础设施收敛**：API v1、持久 job/task、审批、evidence-first 和飞书通知已构成当前够用的执行地基。没有具体工作流缺口时，不继续增加队列、数据库、调度层或新通知基础设施。
-- **官方 Object Library ID 不可猜测**：analysis group 可优先用 `addobject("script_id")`，但 `script_id` 必须来自官方文档或 Windows v242 `addobject;` 枚举；`prefer_builtin` 无 ID 回退自定义 group，`require_builtin` 无 ID 必须报错。
+- **官方 Object Library ID 不可猜测**：analysis group 可优先用 `addobject("script_id")`，但 `script_id` 必须来自官方文档或 Windows v242 `addobject;` 枚举；`prefer_builtin` 无 ID 回退自定义 group，`require_builtin` 无 ID 必须报错。runtime selection must use current catalog/probe evidence；不可用历史 ID 或静态别名替代实时枚举。
 - **跨 shell 命令**：命令块必须标明并遵守实际 shell；`.bat`/CMD、PowerShell、Mac zsh 分开书写，不混用环境变量、续行符、引号或路径语法。
 
 ## 核心工作模式：人判物理，AI 执行

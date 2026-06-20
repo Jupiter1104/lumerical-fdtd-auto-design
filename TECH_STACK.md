@@ -159,9 +159,12 @@ src/
 │   ├── objects.py         # typed object CRUD
 │   ├── sources.py         # typed source CRUD
 │   ├── monitors.py        # typed monitor CRUD
-│   ├── analysis_groups.py # analysis group create/get/update
-│   ├── recipes.py         # DeviceRecipe validate/compile/build
-│   ├── generic_sweeps.py  # Generic SweepPlan validate/plan/start
+│   ├── analysis_groups.py          # analysis group create/get/update
+│   ├── recipes.py                  # DeviceRecipe validate/compile/build
+│   ├── analysis_group_selection.py # enumerate → shortlist → confidence gate
+│   ├── analysis_group_runtime.py   # probe → configure → runsetup → readback
+│   ├── object_library_catalog.py   # live v242 catalog enumerate/persist
+│   ├── generic_sweeps.py           # Generic SweepPlan validate/plan/start
 │   ├── plans.py           # SimulationPlan validate/approve/start
 │   ├── jobs.py            # persistent job tools
 │   ├── analysis.py        # results list/download
@@ -176,12 +179,14 @@ src/
     └── client.py          # Windows RPC HTTP 客户端
 scripts/
 ├── v1_smoke_test.py
-└── windows/minimal_solver_smoke.py
+├── windows/minimal_solver_smoke.py
+└── windows/object_library_analysis_group_smoke.py
 tests/
 ├── test_rpc_server_contract.py
 ├── test_rpc_client_contract.py
 ├── test_mcp_registration.py
-└── test_mcp_stdio_acceptance.py
+├── test_mcp_stdio_acceptance.py
+└── test_object_library_smoke_static.py
 rpc_server.py              # ← 本文件在 Windows 端，Mac 端不运行
 ```
 
@@ -195,7 +200,7 @@ rpc_server.py              # ← 本文件在 Windows 端，Mac 端不运行
 - persistent jobs 与 metasurface 便捷 job
 - export 与 knowledge
 
-`fdtd_analysis_group_create` 支持官方 Object Library 优先字段：`prefer_builtin`、`require_builtin`、`script_id`。`script_id` 必须来自官方资料或目标 Windows 版本 `addobject;` 枚举。
+`fdtd_analysis_group_create` 支持自主官方 Object Library 工作流：`prefer_builtin`、`require_builtin`、`script_id`、`analysis_intent`、`recipe_context`、`parameter_overrides`。首次 session 枚举 live v242 catalog 到 `runtime/object_library_catalog.json`；高置信度 intent 匹配自动探针和配置官方 analysis group；低置信度或探针失败时安全回退。`script_id` 仍需来自官方资料或目标 Windows 版本 `addobject;` 枚举。
 
 离线验证命令：
 

@@ -87,10 +87,38 @@ Geometry 属性支持受限表达式：
 
 - 默认：使用 `addanalysisgroup` 创建自定义空白 analysis group。
 - `prefer_builtin=true` 且提供 `script_id`：使用官方 Object Library `addobject("script_id")`。
-- `prefer_builtin=true` 但没有 `script_id`：回退到自定义 `addanalysisgroup`。
-- `require_builtin=true`：调用 RPC/MCP 创建时必须提供已验证 `script_id`；不要由 Agent 猜测 ID。
+- `prefer_builtin=true` 但没有 `script_id`：系统自动 enumerate → shortlist → probe → configure → runsetup → readback。
+- `require_builtin=true`：调用 RPC/MCP 创建时必须提供已验证 `script_id` 或由系统自动匹配；不要由 Agent 猜测 ID。
 
 `script_id` 应来自 Ansys 官方文档或目标 Windows v242 中 `addobject;` 的运行时枚举。
+
+### Runtime Instructions
+
+编译后的 recipe 可携带 `runtime_instructions`，在 build 阶段注入 analysis group 创建行为：
+
+```json
+{
+  "type": "analysis_group",
+  "runtime_instructions": {
+    "prefer_builtin": true,
+    "require_builtin": true,
+    "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+    "recipe_context": {
+      "solver": {"x span": 1.2e-6, "y span": 1.2e-6, "z span": 1.0e-6},
+      "monitors": [{"type": "power_monitor", "name": "mon"}],
+      "outputs": ["T"],
+      "fom": {"result": "T"}
+    },
+    "parameter_overrides": {}
+  }
+}
+```
+
+构建时 RPC server 按 `runtime_instructions` 自主匹配和配置 official analysis group，并将决策报告写回编译输出。
+
+### Execution Fingerprint
+
+每次 build 生成 `execution_fingerprint`：`SHA-256(recipe_fingerprint + analysis_group.decision_report)`。同一 recipe 对同一 catalog 产生确定性指纹；catalog 版本或探针证据变化会导致指纹变化，防止跨版本篡改决策。
 
 ## Compiler Pipeline
 

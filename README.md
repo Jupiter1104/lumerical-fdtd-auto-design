@@ -15,7 +15,7 @@
 - 注意：旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖。
 - MCP Server 已形成 69-tool 0.1.0 工具面，覆盖 project/object/material/solver/source/monitor/analysis/result、DeviceRecipe、Generic SweepPlan、SimulationPlan、persistent jobs、raw eval/getv/setv 和知识工具。
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
-- DeviceRecipe 的 `analysis_groups[]` 已支持官方 Object Library 优先路径：有已确认 `script_id` 时用 `addobject("script_id")`，无 ID 时按策略回退或报错；Agent 不得猜测官方库 ID。
+- DeviceRecipe 的 `analysis_groups[]` 已支持自主官方 Object Library 工作流：首次 session 枚举 live v242 catalog；高置信度 intent 匹配自动探针和配置官方 analysis group；低置信度或探针失败时安全回退；Agent 不得猜测官方库 ID。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
 - 可选物理工作流保留 C3 包 `runtime/approvals/production_sweep_c3_packet.json`：`status=ready_for_human_approval`、`task_count=25`；该包未获单独批准，不得启动 C4。

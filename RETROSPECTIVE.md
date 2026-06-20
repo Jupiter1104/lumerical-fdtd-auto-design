@@ -51,6 +51,8 @@
   - 指纹门（DeviceRecipe compile_fingerprint、SweepPlan packet_fingerprint）防止篡改请求。
 - 下一步调整：
   - Windows 手动 smoke 已通过：`scripts\windows\minimal_solver_smoke.py` 返回 `technical_smoke=true`、`physical_conclusion=false`、`ok=true`，14/14 步完成。
+  - 自主官方 analysis group 选择（enumerate → shortlist → probe → configure → runsetup → readback）已实现并通过离线验证，69-tool 注册表不变。
+  - **注意**：自主 official-group 选择的技术链路仅在离线 fake backend 上验证通过；只有在 Windows v242 manual smoke 通过后（`scripts\windows\object_library_analysis_group_smoke.py` 返回 `catalog_enumerated=true`、`probe_restore_verified=true`、`setup_verified=true`、`ok=true`）才可声明为"技术上已通过"。当前尚未执行 Windows smoke，不声明物理验证。
   - 真实 C4/C5 sweep 是独立、可选的物理工作流，只有用户批准 exact C3 packet 后才进入，不作为 MCP 交付前置条件。
   - Type modeling recipes 补充更多器件类型。
 
