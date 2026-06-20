@@ -192,3 +192,10 @@
   curl http://127.0.0.1:5501/health
   ```
 - 预防：建立隧道前先检查 `lsof -nP -iTCP:<local_port> -sTCP:LISTEN`；如果本地 5000 不干净，统一使用 5501 或其他空闲端口，不要误判为 Windows RPC 故障。
+
+## 2026-06-20 - fake-lumapi 通过不代表真实 Lumerical LSF 属性顺序可执行
+
+- 现象：Windows minimal solver smoke 中核心 run/result 已通，但 `fdtd_region`、`monitor_create`、`analysis_group_create`、`project_save` 和 `result_download` 步骤失败；其中 GUI 会出现不连贯的保存提示。
+- 根因：离线 fake backend 只记录脚本，没有模拟真实 v242 对对象属性和 route 的约束：FDTD region 不能像普通对象一样 `set("name", ...)`；power monitor 设置 `frequency points` 前需先启用 `override global monitor settings`；smoke 使用了不存在的 `/project/save` alias 和不存在的 `/results/smoke_report.json` 文件下载路径；analysis group smoke 传了不稳定的 `script` 快捷属性。
+- 修复：FDTD region 创建脚本不再改名；monitor 创建时自动在 `frequency points` 前设置 `override global monitor settings=1`；补 `/project/save`/`/project/load` alias；smoke analysis group 使用空属性；result download 改为 `/results/mon/T/download`。
+- 预防：typed LSF compiler 的 fake 测试必须断言真实脚本细节，不只断言 route `ok=true`；Windows smoke 失败时优先区分“核心 solver 链路已通”和“typed adapter/脚本胶水失败”。

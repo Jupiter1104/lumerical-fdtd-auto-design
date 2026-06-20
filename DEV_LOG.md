@@ -737,3 +737,11 @@
 - 通知采用 `notifications.json` 幂等记录，Webhook 只从 `FDTD_FEISHU_WEBHOOK` 读取，发送失败不影响 job 状态。
 - Agent 工作流改为提交后返回 job_id 并停止轮询，收到飞书后再分析。
 - 验证：focused/full pytest 与 compileall 通过；2026-06-20 Windows mock smoke 返回持久 job，飞书收到 `succeeded`，未启动 FDTD。
+
+## 2026-06-20 - 0.1.0 Windows minimal solver smoke 返修
+
+- 目标：修复 Windows 本机 manual smoke 暴露的 typed adapter 和 smoke 脚本不连贯问题；不启动 sweep、不改变物理任务边界。
+- 现象：smoke 报告 `technical_smoke=true`、`physical_conclusion=false`，核心 RPC→lumapi→solve→result 链路通，但 `fdtd_region`、`monitor_create`、`analysis_group_create`、`project_save` 和 `result_download` 步骤失败，且 GUI 出现保存提示。
+- 修改：`fdtd_region` 创建脚本不再 `set("name", ...)`；power monitor 自动先设置 `override global monitor settings=1`；RPC 增加 `/project/save` 和 `/project/load` alias；minimal smoke 的 analysis group 使用空属性，result download 改为 `/results/mon/T/download`。
+- 验证：新增 5 个回归测试先红后绿；`compileall` 通过；`pytest -q` 全量通过 539 passed；参数文件验证保持 `physical_conclusion=false`。
+- 后续：Windows 端 `git pull --ff-only` 后重新执行 `scripts\windows\minimal_solver_smoke.py`。

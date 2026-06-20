@@ -437,3 +437,51 @@ def test_material_create_dry_run(client, fake_backend):
     assert "script" in payload
     assert "addmaterial" in payload["script"]
     assert len(fake_backend.operations) == before
+
+
+def test_project_save_alias_matches_model_save(client, tmp_path):
+    """Smoke script uses /project/save; it must be a real v1 route."""
+    path = tmp_path / "smoke_model.fsp"
+    project_resp = client.post("/project/save", json={"file_path": str(path)})
+    model_resp = client.post("/model/save", json={"file_path": str(path)})
+
+    assert project_resp.status_code != 404
+    assert project_resp.status_code == model_resp.status_code
+    assert project_resp.get_json() == model_resp.get_json()
+
+
+def test_fdtd_region_create_script_does_not_rename_fdtd_region(client):
+    """Real FDTD rejects renaming the solver region like a generic object."""
+    resp = client.post(
+        "/objects",
+        json={
+            "object_type": "fdtd_region",
+            "name": "fdtd",
+            "properties": {"x span": 2e-6},
+            "dry_run": True,
+        },
+    )
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert "addfdtd;" in payload["script"]
+    assert 'set("name"' not in payload["script"]
+
+
+def test_power_monitor_frequency_points_enables_override_first(client):
+    """frequency points is valid only after overriding global monitor settings."""
+    resp = client.post(
+        "/monitors",
+        json={
+            "monitor_type": "power_monitor",
+            "name": "mon",
+            "properties": {"frequency points": 5},
+            "dry_run": True,
+        },
+    )
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    script = payload["script"]
+    assert 'set("override global monitor settings",1);' in script
+    assert script.index('set("override global monitor settings",1);') < script.index(
+        'set("frequency points",5);'
+    )

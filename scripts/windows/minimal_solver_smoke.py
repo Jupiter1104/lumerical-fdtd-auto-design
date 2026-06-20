@@ -131,7 +131,7 @@ def main() -> int:
     try:
         resp = requests.post(f"{rpc_url}/analysis-groups", json={
             "name": "analysis",
-            "properties": {"script": "T=1;"},
+            "properties": {},
             "dry_run": False,
         }, timeout=10)
         record_step("analysis_group_create", resp.json().get("ok", False), resp.json())
@@ -178,13 +178,14 @@ def main() -> int:
 
     # Step 14: download result file
     try:
-        resp = requests.get(f"{rpc_url}/results/smoke_report.json", timeout=5)
-        if resp.status_code == 200:
+        resp = requests.get(f"{rpc_url}/results/mon/T/download", timeout=5)
+        payload = resp.json()
+        if resp.status_code == 200 and payload.get("ok"):
             dl_path = output_dir / "downloaded_results.json"
-            dl_path.write_bytes(resp.content)
-            record_step("result_download", True, {"path": str(dl_path), "size": len(resp.content)})
+            dl_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            record_step("result_download", True, {"path": str(dl_path)})
         else:
-            record_step("result_download", False, {"http_status": resp.status_code})
+            record_step("result_download", False, {"http_status": resp.status_code, "payload": payload})
     except Exception as exc:
         record_step("result_download", False, {"error": str(exc)})
 

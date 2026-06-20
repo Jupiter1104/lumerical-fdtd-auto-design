@@ -97,6 +97,37 @@ def _compile_set_properties_script(
     return "\n".join(lines)
 
 
+def _compile_fdtd_region_script(
+    properties: dict[str, object],
+) -> str:
+    """Build a solver-region creation script.
+
+    Lumerical's FDTD region is the solver object itself; treating it like a
+    generic geometry object and setting ``name`` can fail on real v242.
+    """
+    lines = ["addfdtd;"]
+    for key in sorted(properties):
+        lines.append(f'set("{key}",{format_lsf_value(properties[key])});')
+    return "\n".join(lines)
+
+
+def _compile_monitor_create_script(
+    add_command: str,
+    name: str,
+    properties: dict[str, object],
+) -> str:
+    """Build monitor creation script with monitor-setting dependencies ordered."""
+    lines = [add_command, f'set("name",{format_lsf_value(name)});']
+    if (
+        "frequency points" in properties
+        and "override global monitor settings" not in properties
+    ):
+        lines.append('set("override global monitor settings",1);')
+    for key, value in properties.items():
+        lines.append(f'set("{key}",{format_lsf_value(value)});')
+    return "\n".join(lines)
+
+
 def _adapter_error_from_validation(validation: dict) -> AdapterError:
     """Convert a validation error dict from *validate_object_type* to an AdapterError."""
     error = validation.get("error", {})
@@ -222,7 +253,10 @@ class WindowsFdtdAdapter:
                 {"object_type": object_type},
             )
 
-        script = _compile_create_script(add_command, name, props)
+        if object_type == "fdtd_region":
+            script = _compile_fdtd_region_script(props)
+        else:
+            script = _compile_create_script(add_command, name, props)
         return self._execute_or_dry_run(
             script, dry_run,
             extra={"object_type": object_type, "name": name},
@@ -516,7 +550,7 @@ class WindowsFdtdAdapter:
                 400,
                 {"monitor_type": monitor_type},
             )
-        script = _compile_create_script(add_command, name, props)
+        script = _compile_monitor_create_script(add_command, name, props)
         return self._execute_or_dry_run(
             script, dry_run,
             extra={"monitor_type": monitor_type, "name": name},

@@ -624,6 +624,7 @@ def create_app(
         return _success(session.close())
 
     @app.post("/model/save")
+    @app.post("/project/save")
     @app.post("/file/save")
     def model_save():
         reject_during_sweep()
@@ -631,6 +632,7 @@ def create_app(
         return _success(session.save(data.get("file_path")))
 
     @app.post("/model/load")
+    @app.post("/project/load")
     @app.post("/file/load")
     def model_load():
         reject_during_sweep()

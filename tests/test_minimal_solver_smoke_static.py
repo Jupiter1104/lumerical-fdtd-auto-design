@@ -49,6 +49,8 @@ def test_creates_one_monitor():
 def test_creates_one_analysis_group():
     content = _read()
     assert "/analysis-groups" in content
+    assert '"properties": {}' in content
+    assert '"script": "T=1;"' not in content
 
 
 def test_runs_once():
@@ -70,6 +72,8 @@ def test_saves_fsp():
 
 def test_downloads_result_file():
     content = _read()
+    assert "/results/mon/T/download" in content
+    assert "/results/smoke_report.json" not in content
     assert "downloaded_results.json" in content
     assert "result_download" in content
 
