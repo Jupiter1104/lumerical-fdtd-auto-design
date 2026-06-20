@@ -343,3 +343,90 @@ def test_require_builtin_rejects_low_confidence(tmp_path):
             "dry_run": False,
         })
     assert exc.value.error_type == "builtin_analysis_group_no_high_confidence_match"
+
+
+# ---------------------------------------------------------------------------
+# Autonomous analysis group acceptance test (Task 9)
+# ---------------------------------------------------------------------------
+
+import importlib
+import sys
+
+
+@pytest.fixture
+def server_module():
+    sys.modules.pop("rpc_server", None)
+    return importlib.import_module("rpc_server")
+
+
+@pytest.fixture
+def fake_backend_for_acceptance():
+    from test_fdtd_20_step_fake_lumapi import FakeFdtdBackend
+
+    return FakeFdtdBackend()
+
+
+def test_autonomous_builtin_analysis_group_flow(
+    server_module, fake_backend_for_acceptance, tmp_path
+):
+    """Prove the full autonomous selection flow through the HTTP route.
+
+    intent -> enumerate -> shortlist -> probe -> configure -> runsetup -> readback
+    """
+    from src.analysis_group_runtime import (
+        AnalysisGroupInspector,
+        AnalysisGroupService,
+        LumapiBridge,
+        SessionOperationGate,
+    )
+    from src.object_library_catalog import ObjectLibraryCatalog
+    from src.windows_fdtd_adapter import WindowsFdtdAdapter
+
+    backend = fake_backend_for_acceptance
+
+    catalog = ObjectLibraryCatalog(tmp_path / "catalog")
+    catalog.ensure(
+        {
+            "product": "FDTD",
+            "solver_version": "2024 R2.4",
+            "path_version_tag": "v242",
+            "lumapi_sha256": "sha256:fake",
+        },
+        backend.addobject,
+    )
+    bridge = LumapiBridge(backend)
+    service = AnalysisGroupService(
+        WindowsFdtdAdapter(backend),
+        bridge,
+        catalog,
+        AnalysisGroupInspector(
+            bridge, catalog, tmp_path / "probe", SessionOperationGate()
+        ),
+    )
+    app = server_module.create_app(
+        backend=backend,
+        object_library_catalog=catalog,
+        analysis_group_service=service,
+    )
+    response = app.test_client().post(
+        "/analysis-groups",
+        json={
+            "name": "power_analysis",
+            "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+            "recipe_context": {
+                "solver": {"x span": 3e-6},
+                "monitors": [{"type": "power_monitor"}],
+                "outputs": ["T"],
+                "fom": {"result": "T"},
+            },
+            "prefer_builtin": True,
+            "parameter_overrides": {},
+            "properties": {},
+        },
+    )
+    payload = response.get_json()
+    assert payload["ok"] is True
+    assert payload["source"] == "builtin"
+    assert payload["script_id"] == "power_transmission_box"
+    assert payload["parameters"]["verification"]["x span"]["matched"] is True
+    assert backend.runsetup_calls == ["power_analysis"]

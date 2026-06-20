@@ -34,6 +34,17 @@ class FakeFdtdBackend:
         self._objects: dict[str, dict] = {}
         self._materials: dict[str, dict] = {}
         self._running = False
+        # Object Library support (Task 9)
+        self._saved_projects: dict = {}
+        self._selected: str | None = None
+        self._object_library = ["power_transmission_box", "rounded_cylinder"]
+        self._analysis_defaults = {
+            "power_transmission_box": {
+                "x span": 2e-6,
+                "make plots": 1,
+            },
+        }
+        self.runsetup_calls: list = []
 
     # -- script execution -----------------------------------------------
 
@@ -84,6 +95,12 @@ class FakeFdtdBackend:
             if m:
                 return ["T", "R"]  # canned attributes
 
+            # -- mutating: addobject("script_id") for Object Library --
+            m = re.match(r'^addobject\("([^"]+)"\)', cmd)
+            if m:
+                self.addobject(m.group(1))
+                continue
+
             # -- mutating: add<type> command --
             if re.match(r"^add[a-z]", cmd):
                 pending_add = cmd
@@ -102,8 +119,15 @@ class FakeFdtdBackend:
                 if m:
                     self._objects.pop(m.group(1), None)
 
+            elif cmd == "delete":
+                if self._selected and self._selected in self._objects:
+                    del self._objects[self._selected]
+                    self._selected = None
+
             elif cmd.startswith("select("):
-                pass  # select is always followed by set commands
+                m = re.match(r'^select\("([^"]+)"\)', cmd)
+                if m:
+                    self.select(m.group(1))
 
             # -- mutating: set("prop", value) --
             elif cmd.startswith("set("):
@@ -121,17 +145,20 @@ class FakeFdtdBackend:
                     except ValueError:
                         val = val_str
 
-                    pending_props[prop] = val
-
-                    # When name is set, finalize the pending object
-                    if prop == "name" and pending_add:
-                        obj_name = str(val)
-                        self._objects[obj_name] = {
-                            "object_type": pending_add,
-                            **pending_props,
-                        }
-                        pending_add = None
-                        pending_props = {}
+                    if pending_add:
+                        pending_props[prop] = val
+                        # When name is set, finalize the pending object
+                        if prop == "name":
+                            obj_name = str(val)
+                            self._objects[obj_name] = {
+                                "object_type": pending_add,
+                                **pending_props,
+                            }
+                            pending_add = None
+                            pending_props = {}
+                    else:
+                        # No pending add — operate on selected object
+                        self.set(prop, val)
 
             # -- mutating: setmaterial("obj","mat") --
             elif cmd.startswith("setmaterial("):
@@ -183,6 +210,67 @@ class FakeFdtdBackend:
     def getresult(self, monitor: str, attribute: str):
         self.operations.append(("getresult", monitor, attribute))
         return 0.95
+
+    # -- Object Library / analysis group support (Task 9) ----------------
+
+    def layoutmode(self):
+        return 1
+
+    def addobject(self, script_id=None):
+        if script_id is None:
+            return list(self._object_library)
+        if script_id not in self._object_library:
+            raise RuntimeError("unknown Object Library ID")
+        self._objects[script_id] = {
+            "object_type": "analysis_group",
+            **self._analysis_defaults.get(script_id, {}),
+        }
+        self._selected = script_id
+
+    def queryuserprop(self, name):
+        return {"name": ["x span"], "type": [2]}
+
+    def queryanalysisprop(self, name):
+        return {"name": ["make plots"], "type": [0]}
+
+    def queryanalysisresult(self, name):
+        return {"name": ["T"], "type": [0]}
+
+    def getnamed(self, name, prop=None):
+        return self._objects.get(name, {}).get(prop)
+
+    def querynamed(self, name):
+        return "name\nx span\nmake plots"
+
+    def setnamed(self, name, prop, value):
+        self._objects.setdefault(name, {})[prop] = value
+
+    def set(self, prop, value):
+        if prop == "name" and self._selected:
+            self._objects[value] = self._objects.pop(self._selected)
+            self._selected = value
+
+    def select(self, name):
+        self._selected = name
+
+    def runsetup(self):
+        self.runsetup_calls.append(self._selected)
+
+    def save(self, path):
+        import copy
+        self._saved_projects[str(path)] = copy.deepcopy(self._objects)
+
+    def load(self, path):
+        import copy
+        key = str(path)
+        if key in self._saved_projects:
+            self._objects = copy.deepcopy(self._saved_projects[key])
+
+    def newproject(self):
+        self._objects.clear()
+
+    def ls(self):
+        return list(self._objects.keys())
 
 
 # ---------------------------------------------------------------------------
