@@ -417,6 +417,24 @@ def test_compile_with_pre_post_run():
     assert result["raw_hook_hashes"]["pre_run"].startswith("sha256:")
     assert result["raw_hook_hashes"]["post_run"].startswith("sha256:")
 
+    # Verify hook content lines are commented out in the build-only script
+    script_lines = result["script"].splitlines()
+    pre_comment_found = False
+    post_comment_found = False
+    for line in script_lines:
+        if '# set("wavelength", 1.55e-6);' in line:
+            pre_comment_found = True
+            assert line.startswith("#"), (
+                f"Expected pre_run hook line to be commented out, got: {line!r}"
+            )
+        if "# runanalysis;" in line:
+            post_comment_found = True
+            assert line.startswith("#"), (
+                f"Expected post_run hook line to be commented out, got: {line!r}"
+            )
+    assert pre_comment_found, "pre_run hook content not found in script"
+    assert post_comment_found, "post_run hook content not found in script"
+
 
 def test_compile_invalid_recipe_fails():
     """Compiling an invalid recipe returns ok=False."""

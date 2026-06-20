@@ -1092,8 +1092,9 @@ def compile_recipe(recipe: dict) -> dict:
     # 1. pre_geometry hook (not executed in build-only mode)
     script_parts.append("# === Pre-Geometry Hook ===")
     if pre_run.strip():
-        script_parts.append("# (not executed in build-only mode)")
-        script_parts.append(pre_run.strip())
+        script_parts.append("# pre_run hook (not executed in build-only mode)")
+        for line in pre_run.strip().splitlines():
+            script_parts.append(f"# {line}")
     else:
         script_parts.append("# No pre_geometry hook")
     script_parts.append("")
@@ -1115,8 +1116,9 @@ def compile_recipe(recipe: dict) -> dict:
     # 4. post_geometry hook
     script_parts.append("# === Post-Geometry Hook ===")
     if post_run.strip():
-        script_parts.append("# (not executed in build-only mode)")
-        script_parts.append(post_run.strip())
+        script_parts.append("# post_run hook (not executed in build-only mode)")
+        for line in post_run.strip().splitlines():
+            script_parts.append(f"# {line}")
     else:
         script_parts.append("# No post_geometry hook")
     script_parts.append("")
