@@ -204,20 +204,24 @@ python3 -m venv .venv
 
 ## 连接方式
 
-```bash
-# === 新 v1 smoke / 通用建模 / 原生 sweep（在 Windows 本机） ===
-set FDTD_RPC_URL=http://127.0.0.1:5000
+Windows CMD：
 
-# === SSH 隧道 ===
+```cmd
+set FDTD_RPC_URL=http://127.0.0.1:5000
+```
+
+Mac zsh：
+
+```zsh
 ssh -L 5000:localhost:5000 32482@192.168.31.26
 export FDTD_RPC_URL=http://localhost:5000
 ```
 
 ## 命令
 
-```bash
-# === Windows 端 ===
+Windows CMD：
 
+```cmd
 # 安装依赖
 F:\Program Files\Lumerical\v242\python\python.exe -m pip install flask numpy scipy
 
@@ -229,9 +233,11 @@ scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_
 
 # 新 v1 smoke：不求解，只打开 GUI、建最小模型、保存 .fsp、关闭
 F:\Program Files\Lumerical\v242\python\python.exe scripts\v1_smoke_test.py
+```
 
-# === Mac 端 ===
+Mac zsh：
 
+```zsh
 # 安装依赖
 pip install mcp requests
 
@@ -250,6 +256,7 @@ FDTD_RPC_URL=http://localhost:5000 python -m src.server
 | `FDTD_PYTHON` | Windows | 管理脚本使用的 Lumerical Python，默认 `F:\Program Files\Lumerical\v242\python\python.exe` |
 | `FDTD_RPC_PORT` | Windows | 新 v1 服务端口，默认 `5000` |
 | `LUMAPI_PATH` | Windows | raw lumapi API 路径覆盖；默认从 Lumerical Python 相对路径推断 |
+| `FDTD_FEISHU_WEBHOOK` | Windows 用户环境 | 飞书自定义机器人 Webhook；只由 RPC 进程读取，不写入 Git、请求或日志 |
 
 ## 关键约束
 
@@ -258,6 +265,6 @@ FDTD_RPC_URL=http://localhost:5000 python -m src.server
 - **脏会话清理**：每次 sweep 前 `fdtd.clearjobs()` 清理前次遗留作业队列。
 - **单实例**：FDTD 单机 license，RPC Server 为互斥点。
 - **文件路径**：Windows 路径必须正斜杠（C++ 层要求）。仿真结果在 Windows 端，通过 HTTP 下载回 Mac。
-- **异步长任务**：求解请求只负责启动并返回 ID；状态轮询默认返回摘要和短日志尾部。
+- **异步长任务**：求解请求只负责启动并返回 ID；Agent 默认等待飞书终态通知，不主动轮询。用户明确询问时，状态接口只返回摘要和短日志尾部。
 - **证据优先**：默认下载 JSON/CSV/NPZ/MAT、关键图和最终 `.fsp`，不默认下载全部逐点模型。
 - **完成不等于通过**：solver 状态、数据完整性、数值质量和人工物理审核是不同层级。

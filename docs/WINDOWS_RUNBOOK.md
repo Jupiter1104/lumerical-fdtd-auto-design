@@ -8,6 +8,8 @@
 - 日志：`logs\rpc_server.err.log`、`logs\rpc_server.out.log`
 - PID：`runtime\rpc_server.pid`
 
+本文命令按代码块标记的 shell 执行：`cmd` 仅用于 CMD，`powershell` 仅用于 PowerShell；不要把两者与 Mac zsh 语法混用。
+
 ## 更新代码
 
 在 Windows 本地 CMD：
@@ -124,7 +126,7 @@ type templates\metasurface\base_model.probe.json
 
 From `F:\lumerical-fdtd-auto-design\fdtd-auto-design`:
 
-    git pull
+    git pull --ff-only
     scripts\windows\generate_template_contract.bat
 
 Expected result:
@@ -137,7 +139,7 @@ This command reads JSON evidence only. It must not open Lumerical, mutate `.fsp`
 
 From `F:\lumerical-fdtd-auto-design\fdtd-auto-design`:
 
-    git pull
+    git pull --ff-only
     scripts\windows\build_real_run_preflight_packet.bat
 
 Expected:
@@ -147,13 +149,16 @@ Expected:
 This command reads JSON evidence and writes `runtime\approvals\real_2x2_preflight.json`.
 It must not start RPC real mode or run FDTD.
 
-## 当前已知状态（2026-06-18）
+## 当前已知状态（2026-06-20）
 
 - Windows clone 已同步并加载 close detach/timeout 修复。
 - `5004` 已完成开发期真实验证：v1 smoke 全流程通过，真实 2×2 原生 `metasurface-sweep` 结果 4/4 valid、quality `pass`。
 - 新服务默认端口已切换为 `5000`；Windows 同步后用 `restart_rpc.bat` 启动。
 - 最新 smoke 产物：`smoke-output\rpc_v1_smoke_20260618_181844.fsp`。
 - 新代码已支持原生逐 sample `metasurface-sweep`，`real` 启动返回 HTTP 202。
+- C3 25-task production sweep packet 已生成并验证，当前等待 exact packet 人工批准。
+- 飞书持久 job 通知已通过 Windows mock smoke；Agent 提交后默认不轮询。
+- 当前执行基础设施已够用，后续优先推进批准后的真实设计工作流。
 
 ## 故障排查
 
@@ -194,20 +199,20 @@ git rev-parse --short HEAD
 
 ## Stage C3 production sweep packet
 
-On Windows, after pulling the latest code and ensuring `base_model.contract.json` and the C2 review artifact exist:
+在 Windows CMD 中，确认 `base_model.contract.json` 和 C2 review artifact 存在后运行：
 
 ```cmd
-cd /d F:\lumerical-fdtd-auto-designdtd-auto-design
-scripts\windowsuild_production_sweep_packet.bat
+cd /d F:\lumerical-fdtd-auto-design\fdtd-auto-design
+scripts\windows\build_production_sweep_packet.bat
 ```
 
-Expected output contains:
+预期输出包含：
 
 ```text
 production_sweep_c3 status=ready_for_human_approval task_count=25
 ```
 
-This command is local-only. It must not start FDTD, call `/jobs/start`, resume a job, or modify `.fsp` files.
+该命令只在本地生成审批包，不得启动 FDTD、调用 `/jobs/start`、resume job 或修改 `.fsp`。
 
 
 
@@ -219,7 +224,7 @@ This command is local-only. It must not start FDTD, call `/jobs/start`, resume a
 setx FDTD_FEISHU_WEBHOOK "https://open.feishu.cn/open-apis/bot/v2/hook/你的Webhook"
 ```
 
-然后运行 `scripts\windowsestart_rpc.bat`。不要把 Webhook 写入仓库、请求 JSON 或日志。
+`setx` 只影响后续进程。关闭当前 RPC 后，在 Windows CMD 中运行 `scripts\windows\restart_rpc.bat`，让新 `pythonw.exe` 继承变量。不要把 Webhook 写入仓库、请求 JSON 或日志。
 
 不启动 FDTD 的 smoke：
 
@@ -243,3 +248,4 @@ Invoke-RestMethod `
 - `run.log` 含发送成功记录。
 - 不启动真实 FDTD 求解。
 
+2026-06-20 已完成上述 Windows mock smoke。Agent 获得 `job_id` 后应结束当前工作，不主动轮询；用户收到飞书后再读取结果。

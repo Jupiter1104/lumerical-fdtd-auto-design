@@ -8,8 +8,8 @@
 
 ## 当前状态
 
-- 阶段：MVP 验证完成，通用建模能力补全中
-- 文档基线：2026-06-19 — API v1、持久 job/task、SimulationPlan、模板 contract、真实 2×2、C2 review 和 C3 plan 已对齐到代码/计划
+- 阶段：执行基础设施已够用，等待批准 C3 exact packet 后进入 C4 真实 production-discovery sweep
+- 文档基线：2026-06-20 — API v1、持久 job/task、SimulationPlan、模板 contract、真实 2×2、C2 review、C3 packet 和飞书通知已对齐到当前事实
 - 已验证基础：Mac → SSH Tunnel/HTTP → Windows v242 → Stage C1 真实 2×2 SimulationPlan sweep，结果 4/4 valid；Stage C2 evidence review 软件链 `pass`
 - 当前代码状态：仓库内通用 `rpc_server.py`、Mac `RpcClient` 和 MCP 已统一为 API v1；Windows `5004` 已完成真实 2×2 原生 `metasurface-sweep` 验证，结果 4/4 valid、quality `pass`。新服务默认端口已提升为 `5000`；`metasurface-sweep` 由 `/jobs/start` 异步返回 `202 + job_id`，包含 Phase 1-4、quality report 和 evidence index。
 - 注意：旧 Autosweep 只作为历史 baseline，不再是新 `rpc_server.py` 的运行时依赖。
@@ -17,7 +17,9 @@
 - SimulationPlan v0.1 已支持 metasurface unit-cell：默认值披露、任务预算、SHA-256 指纹、Plan 审批、mock 编译和 MCP 执行。
 - mock 前必须批准默认值和假设；real 还需要匹配同一 Plan 指纹的真实运行审批与模板契约。
 - real metasurface resume 会重新校验模板 SHA-256；模板变化时拒绝恢复。
-- 当前 checkpoint：Stage C2 real result review 已完成；Stage C3 production sweep design packet 已写成执行计划。C1 真实 2×2 job `job_20260619_213418_metasurface_sweep` 为 `succeeded`，4/4 task 成功，quality `pass`。C2 已将 evidence-only 结果复制到本地 git-ignored `runtime/reviews/` 并生成 `review.json` 与 `real_2x2_review.md`；软件链结论为 `pass`。物理结论仍需人工审核，且 2×2 phase span 约 `1.3273 rad`，不足以作为最终 2π phase library。下一步执行 `docs/superpowers/plans/2026-06-19-production-sweep-design-packet.md`，只生成 25-task C3 审批包，不自动启动 FDTD。
+- C3 已生成 `runtime/approvals/production_sweep_c3_packet.json`：`status=ready_for_human_approval`、`task_count=25`。当前停在 exact packet 人工批准前；未批准不得启动 C4。
+- 持久 job 飞书通知已通过 Windows mock smoke 验证，不启动 FDTD。Agent 提交长任务并取得 `job_id` 后默认停止轮询，用户收到终态通知后再要求读取结果。
+- 当前基础设施已覆盖计划、审批、持久执行、恢复、质量报告、evidence-first 和终态通知。后续优先推进真实设计工作流；没有具体缺口时不继续扩建基础设施。
 
 ## 核心文档
 
@@ -32,6 +34,8 @@
 - `docs/WINDOWS_RUNBOOK.md`：Windows 本地启动、同步、smoke 与故障排查。
 - `templates/metasurface/README.md`：原生 metasurface sweep 模板安装与结构要求。
 
+`docs/superpowers/specs/` 和 `docs/superpowers/plans/` 是历史设计与执行档案，不作为新人启动入口；当前事实以上述入口文档和代码为准。
+
 ## 目标操作链
 
 ```text
@@ -41,6 +45,8 @@
   -> 可选 mock 软件链验证
   -> 明确批准 real
   -> Windows 异步 job/task 执行
+  -> Agent 返回 job_id 后停止轮询
+  -> 飞书终态通知
   -> 结果提取与质量报告
   -> 人工物理审核
   -> 建议下一轮，不自动扩大计算

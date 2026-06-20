@@ -93,8 +93,9 @@ def register_job_tools(mcp: FastMCP, rpc: RpcClient) -> None:
 
         Real jobs require explicit human approval in the request:
         {"approval": {"approved": true, "approved_for": "real_run"}}.
-        Long real jobs may return immediately with a job_id; poll with
-        fdtd_job_status() and fdtd_job_tasks().
+        Long real jobs return immediately with a job_id. Return that ID and
+        stop polling; use fdtd_job_status() or fdtd_job_tasks() once only when
+        the user explicitly asks for progress or after a terminal notification.
         """
         return rpc.jobs_start(request)
 

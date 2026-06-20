@@ -736,5 +736,4 @@
 - `/jobs/plan` 通知 planned；mock/real 通知 succeeded、failed、partial；普通 SimulationPlan 校验和 preflight 不通知。
 - 通知采用 `notifications.json` 幂等记录，Webhook 只从 `FDTD_FEISHU_WEBHOOK` 读取，发送失败不影响 job 状态。
 - Agent 工作流改为提交后返回 job_id 并停止轮询，收到飞书后再分析。
-- 验证：记录 focused/full pytest、compileall 和 Windows mock smoke 的实际结果。
-
+- 验证：focused/full pytest 与 compileall 通过；2026-06-20 Windows mock smoke 返回持久 job，飞书收到 `succeeded`，未启动 FDTD。

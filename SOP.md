@@ -69,7 +69,7 @@
 2. 确认 `templates/metasurface/base_model.fsp` 已按 SOP-002b 安装。
 3. 先走 mock 或 plan；真实运行前必须获得审批摘要确认。
 4. Mac 端通过 `/jobs/start` 启动 `real metasurface-sweep`，预期 HTTP 202 返回 `job_id`。
-5. 轮询 `/jobs/<job_id>` 和 `/jobs/<job_id>/tasks`，完成后检查 quality/evidence。
+5. 记录并返回 `job_id` 后停止轮询；收到飞书终态通知后，再读取 `/jobs/<job_id>`、task、quality 和 evidence。
 
 旧 `scripts/smoke_test.py` 仅用于历史 Autosweep baseline，不再作为新 v1 验收入口。
 
@@ -113,7 +113,7 @@ python scripts/v1_smoke_test.py --rpc http://localhost:5000
 5. 用返回的 Plan 审批启动 `fdtd_simulation_plan_start(mode="mock")`。
 6. 对于 real：另外生成 template contract 和真实运行摘要，取得单独批准后以 `mode="real"` 启动。
 7. 审批或模板指纹变化后绝不复用旧审批。
-8. 启动后保存 `job_id`，使用轻量 status 接口轮询，不用单次长 HTTP/MCP 调用等待。
+8. 启动后保存并返回 `job_id`，结束当前 Agent 工作；只有用户明确询问进度时才调用一次轻量 status，不用单次长 HTTP/MCP 调用等待。
 9. 完成后生成 summary、质量报告和关键可视化，再交由人工判断物理合理性。
 
 ## SOP-008 - Job 状态、失败和恢复
@@ -253,4 +253,11 @@ Stage A inventory
 4. Agent 提交长任务并确认收到 `job_id` 后停止轮询；只有用户明确询问进度时才做一次只读查询。
 5. 用户收到飞书后，让 Agent 读取 `status.json`、`summary.json`、`quality_report.json` 和 evidence-first 结果。
 6. 飞书发送失败只查 `run.log`，不得据此重跑或改变 job 状态。
+7. 2026-06-20 已完成 Windows mock smoke：持久 job 成功、飞书收到 `succeeded`，且未启动 FDTD。
 
+## SOP-016 - Mac、CMD 与 PowerShell 命令边界
+
+1. Mac 本地命令使用 `zsh`；Windows `.bat`、`cd /d`、`set` 使用 CMD；`Invoke-RestMethod`、`$env:`、反引号续行使用 PowerShell。
+2. 同一代码块不得混用三种 shell。远程操作时先标明命令在哪台机器、哪个 shell 执行。
+3. Windows 路径在 Markdown 中保持字面反斜杠；交付前扫描 `\f`、`\b`、`\r` 等隐藏控制字符。
+4. 能调用仓库脚本时优先调用脚本，不把复杂 PowerShell 压进 `.bat` 或 zsh 单行命令。

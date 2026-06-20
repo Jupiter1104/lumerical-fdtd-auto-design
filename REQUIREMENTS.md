@@ -61,11 +61,12 @@
 - 用户看 Windows 屏幕的方式：远程桌面（RDP）为主。
 - 通信方式：SSH 隧道或局域网直连；新 v1 服务默认端口为 `5000`，`5004` 仅保留为开发期历史端口。
 - 结果回传：HTTP `/results/<path>` 下载，已验证可用。
+- MCP Server 已接入持久 `/jobs/*`、SimulationPlan 和 C3 packet 工具。
+- 持久 job 飞书终态通知已通过 Windows mock smoke 验证；Agent 提交后默认不轮询。
 
 ## 开放问题
 
 - 已解决：Windows `5004` v1 smoke 在 close detach/timeout 修复同步并重启后全流程通过；真实 2×2 原生 `metasurface-sweep` 已在 `5004` 通过；新 v1 服务默认端口已切换为 `5000`，Windows 同步后 health/mock smoke 通过。
 - 问题：通用 `/debug/eval` 是否仅作为受审计的调试工具保留，默认自然语言建模改走 typed recipe/builder？
-- 问题：`SimulationPlan` 的最小 schema 如何覆盖 FDTD/FDE/EME，同时避免首版过度抽象？
-- 问题：MCP Server 何时接入 Claude Code？
+- 问题：`SimulationPlan` 后续版本如何扩展到 FDE/EME，同时保持当前 metasurface v0.1 契约稳定？
 - 问题：扩展至更多器件类型（MMI、波导模式等）的优先级？

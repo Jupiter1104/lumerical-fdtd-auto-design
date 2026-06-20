@@ -57,8 +57,8 @@ template SHA-256 fingerprints and rejects changed templates.
     submit -> job_id/task_id
           │
           ▼
-11. Poll Compact Status
-    state / completed / failed / missing / short log tail
+11. Return ID and Stop Polling
+    wait for terminal notification; query once only on explicit request
           │
           ▼
 12. Verify Results

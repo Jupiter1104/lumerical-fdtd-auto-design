@@ -35,10 +35,12 @@
 - **运行模式分级**：默认先走 `plan`；软件链验证走 `mock`；只有真实求解才进入 `real`。`plan/mock` 结果不得作为物理证据。
 - **真实运行审批**：任何 `real` sweep、优化或整器件验证前，必须报告任务数、最大迭代数、模型/配置路径、GUI 状态、调度与资源、输出覆盖风险，并取得针对该运行的明确批准。
 - **作业必须落盘**：长任务不得只存在于 Flask 线程内存。每个 job 和 sample/task 必须有稳定 ID、状态文件、日志、输入快照、结果路径和可恢复信息。
-- **异步优先**：预计超过 30 秒的操作应立即返回 `job_id/task_id`，由状态接口轮询；MCP 工具不得用单次长 HTTP 请求等待求解结束。
+- **通知优先，不主动轮询**：预计超过 30 秒的操作应立即返回 `job_id/task_id`。Agent 确认提交成功后结束当前工作，等待飞书终态通知；只有用户明确询问进度时才做一次只读状态查询。MCP 工具不得用单次长 HTTP 请求等待求解结束。
 - **恢复不改物理**：`resume` 只能跳过已完成样本或重试临时 session/IO 失败，不得静默扩大扫描、修改 mesh/boundary、切换 scheduler 或覆盖原始结果。
 - **结果质量门**：solver 完成不等于任务通过。交付前必须生成结构化质量结论，并区分 `pass`、`warning`、`fail`。
 - **证据优先回传**：默认回传 manifest、status、summary、任务记录、标量结果和关键图；逐点 `.fsp` 只在调试或明确要求时传输。
+- **基础设施收敛**：API v1、持久 job/task、审批、evidence-first 和飞书通知已构成当前够用的执行地基。没有具体工作流缺口时，不继续增加队列、数据库、调度层或新通知基础设施。
+- **跨 shell 命令**：命令块必须标明并遵守实际 shell；`.bat`/CMD、PowerShell、Mac zsh 分开书写，不混用环境变量、续行符、引号或路径语法。
 
 ## 核心工作模式：人判物理，AI 执行
 
@@ -77,9 +79,9 @@ Agent **不具备**物理直觉。它能处理报错（语法错误、网格不�
 
 常见改动需要执行的检查：
 
-```bash
-# === Windows 端 ===
+Windows CMD：
 
+```cmd
 # 1. 验证 lumapi 可用
 F:\Program Files\Lumerical\v242\python\python.exe -c "import lumapi; print('OK')"
 
@@ -92,9 +94,11 @@ curl http://127.0.0.1:5000/health
 
 # 3b. 首次真实 sweep 前安装 metasurface 模板
 scripts\windows\install_metasurface_template.bat "E:\CLAUDE_workspace\Lumerical_autosweep\base_model.fsp"
+```
 
-# === Mac 端 ===
+Mac zsh：
 
+```zsh
 # 4. 建立 SSH 隧道
 ssh -L 5000:localhost:5000 32482@192.168.31.26
 
