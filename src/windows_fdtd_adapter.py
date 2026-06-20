@@ -654,6 +654,24 @@ class WindowsFdtdAdapter:
         script = _compile_set_properties_script(name, properties)
         return self._execute_or_dry_run(script, dry_run, extra={"name": name})
 
+    def create_verified_builtin_analysis_group(
+        self,
+        script_id: str,
+        name: str,
+    ) -> dict:
+        """Insert a verified Object Library analysis group via script.
+
+        This is a low-level helper that does not choose candidates;
+        selection and verification belong to ``AnalysisGroupService``.
+        """
+        script = _compile_builtin_analysis_group_script(script_id, name, {})
+        self._backend.eval(script)
+        return {"name": name, "source": "builtin", "script_id": script_id}
+
+    def delete_named_object(self, name: str) -> None:
+        """Delete a named object from the simulation via script."""
+        self._backend.eval(f'select({format_lsf_value(name)});\ndelete;')
+
     # ------------------------------------------------------------------
     # Simulation
     # ------------------------------------------------------------------

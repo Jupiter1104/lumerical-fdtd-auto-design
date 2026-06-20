@@ -7,6 +7,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from .analysis_group_selection import (
+    AnalysisSelectionError,
+    choose_high_confidence,
+    rank_probed_candidates,
+    resolve_analysis_intent,
+    resolve_analysis_parameters,
+    shortlist_candidates,
+)
 from .fdtd_schema import fingerprint_json
 
 
@@ -255,3 +263,213 @@ class AnalysisGroupInspector:
             else:
                 self._failed_this_session.discard(script_id)
             return stored
+
+
+class AnalysisGroupService:
+    """Orchestrates the full selection flow: intent -> catalog -> shortlist ->
+    probe -> parameter resolution -> builtin creation -> setup -> readback
+    verification -> fallback.
+    """
+
+    def __init__(self, adapter, bridge, catalog, inspector):
+        self.adapter = adapter
+        self.bridge = bridge
+        self.catalog = catalog
+        self.inspector = inspector
+
+    def _fallback(
+        self,
+        body: dict,
+        reason: str | None,
+        candidates: list[dict],
+        fallback_used: bool = True,
+    ) -> dict:
+        if body.get("require_builtin"):
+            raise AnalysisRuntimeError(
+                "builtin_analysis_group_no_high_confidence_match",
+                "No verified Object Library analysis group passed the selection gate.",
+                400,
+                {"candidates": candidates[:5], "reason": reason},
+            )
+        custom = self.adapter.analysis_group_create(
+            name=body["name"],
+            properties=body.get("properties", {}),
+            dry_run=body.get("dry_run", False),
+        )
+        return {
+            **custom,
+            "source": "custom",
+            "script_id": "",
+            "match_confidence": 0.0,
+            "match_reasons": [],
+            "candidates": candidates[:5],
+            "parameters": {
+                "applied": body.get("properties", {}),
+                "defaults_preserved": {},
+                "unresolved": [],
+                "verification": {},
+            },
+            "setup_verified": False,
+            "fallback_used": fallback_used,
+            "fallback_reason": reason,
+            "physical_conclusion": False,
+        }
+
+    def create(self, body: dict) -> dict:
+        requested_builtin = bool(
+            body.get("prefer_builtin")
+            or body.get("require_builtin")
+            or body.get("script_id")
+        )
+        if not requested_builtin:
+            return self._fallback(
+                body,
+                None,
+                [],
+                fallback_used=False,
+            )
+
+        catalog = self.catalog.data()
+        intent = resolve_analysis_intent(
+            body.get("analysis_intent"),
+            body.get("recipe_context"),
+        )
+        script_id = str(body.get("script_id", ""))
+        if script_id:
+            if script_id not in catalog.get("script_ids", []):
+                if body.get("require_builtin"):
+                    raise AnalysisRuntimeError(
+                        "object_library_script_id_not_found",
+                        f"{script_id!r} is not present in the current Object Library.",
+                        400,
+                    )
+                return self._fallback(body, "script_id_not_found", [])
+            shortlist = [{
+                "script_id": script_id,
+                "score": 1.0,
+                "match_reasons": ["explicit_script_id"],
+                "probe": self.catalog.get_probe(script_id),
+            }]
+        else:
+            shortlist = shortlist_candidates(
+                catalog,
+                intent,
+                body.get("recipe_context") or {},
+            )
+
+        if body.get("dry_run"):
+            ranked = rank_probed_candidates(
+                shortlist,
+                intent,
+                body.get("recipe_context") or {},
+            )
+            chosen = choose_high_confidence(ranked)
+            return {
+                "name": body["name"],
+                "source": "builtin" if chosen else "custom",
+                "script_id": chosen["script_id"] if chosen else "",
+                "intent": intent,
+                "candidates": ranked or shortlist,
+                "probe_required": any(not item.get("probe") for item in shortlist),
+                "fallback_used": chosen is None,
+                "fallback_reason": None if chosen else "probe_required_or_low_confidence",
+                "physical_conclusion": False,
+            }
+
+        inspected = []
+        for candidate in shortlist:
+            probe = candidate.get("probe") or self.inspector.inspect(
+                candidate["script_id"]
+            )
+            inspected.append({**candidate, "probe": probe})
+        ranked = rank_probed_candidates(
+            inspected,
+            intent,
+            body.get("recipe_context") or {},
+        )
+        chosen = choose_high_confidence(ranked)
+        if script_id and ranked:
+            chosen = ranked[0]
+        if chosen is None:
+            return self._fallback(body, "no_high_confidence_match", ranked)
+
+        probe = chosen["probe"]
+        try:
+            parameter_context = {
+                **(body.get("recipe_context") or {}),
+                "explicit_properties": body.get("properties", {}),
+            }
+            parameters = resolve_analysis_parameters(
+                probe,
+                body.get("parameter_overrides", {}),
+                parameter_context,
+            )
+        except AnalysisSelectionError as exc:
+            raise AnalysisRuntimeError(
+                exc.error_type, exc.message, 400, exc.details
+            ) from exc
+
+        self.adapter.create_verified_builtin_analysis_group(
+            chosen["script_id"], body["name"]
+        )
+        try:
+            for name, value in parameters["applied"].items():
+                self.bridge.call("setnamed", body["name"], name, value)
+            self.bridge.runsetup(body["name"])
+            verification = {}
+            for name, expected in parameters["applied"].items():
+                actual = self.bridge.call("getnamed", body["name"], name)
+                matched = (
+                    abs(actual - expected) <= max(abs(expected), 1.0) * 1e-12
+                    if isinstance(expected, (int, float))
+                    else actual == expected
+                )
+                verification[name] = {
+                    "expected": expected,
+                    "actual": actual,
+                    "matched": matched,
+                }
+            if not all(item["matched"] for item in verification.values()):
+                raise AnalysisRuntimeError(
+                    "analysis_parameter_verification_failed",
+                    "One or more analysis parameters failed readback verification.",
+                    409,
+                    {"verification": verification},
+                )
+        except Exception as exc:
+            self.adapter.delete_named_object(body["name"])
+            if isinstance(exc, AnalysisRuntimeError) and body.get("require_builtin"):
+                raise
+            if body.get("require_builtin"):
+                raise AnalysisRuntimeError(
+                    "analysis_setup_failed", str(exc), 409
+                ) from exc
+            return self._fallback(body, "builtin_setup_or_verification_failed", ranked)
+
+        parameters["verification"] = verification
+        return {
+            "name": body["name"],
+            "source": "builtin",
+            "script_id": chosen["script_id"],
+            "catalog_identity": catalog.get("identity", ""),
+            "catalog_status": catalog.get("status", "unavailable"),
+            "intent": intent,
+            "match_confidence": chosen["score"],
+            "match_reasons": chosen["match_reasons"],
+            "candidates": ranked[:5],
+            "probe": {
+                "status": "cached_or_executed",
+                "restore_verified": probe["probe_evidence"]["restore_verified"],
+            },
+            "probe_schema_fingerprint": fingerprint_json({
+                "setup_properties": probe.get("setup_properties", []),
+                "analysis_properties": probe.get("analysis_properties", []),
+                "analysis_results": probe.get("analysis_results", []),
+                "settable_properties": probe.get("settable_properties", []),
+            }),
+            "parameters": parameters,
+            "setup_verified": True,
+            "fallback_used": False,
+            "fallback_reason": None,
+            "physical_conclusion": False,
+        }

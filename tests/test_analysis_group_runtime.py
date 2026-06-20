@@ -218,3 +218,128 @@ def test_operation_gate_allows_nested_probe_inside_recipe_build():
             assert gate.active_kind == "analysis_probe"
         assert gate.active_kind == "recipe_build"
     assert gate.active_kind is None
+
+
+# ---------------------------------------------------------------------------
+# Service-level tests (Task 6)
+# ---------------------------------------------------------------------------
+
+from src.analysis_group_runtime import AnalysisGroupService
+from src.windows_fdtd_adapter import WindowsFdtdAdapter
+
+
+class BuildFdtd(ProbeFdtd):
+    def __init__(self):
+        super().__init__()
+        self.runsetup_calls = []
+
+    def setnamed(self, name, prop, value):
+        self.properties[prop] = value
+
+    def select(self, name):
+        self.selected = name
+
+    def runsetup(self):
+        self.runsetup_calls.append(self.selected)
+
+    def delete(self):
+        if self.selected in self.project:
+            self.project.remove(self.selected)
+
+    def eval(self, script):
+        if script.startswith("addanalysisgroup"):
+            self.project.append("custom")
+
+
+def service(tmp_path, fdtd=None):
+    raw = fdtd or BuildFdtd()
+    catalog = ready_catalog(tmp_path)
+    inspector = AnalysisGroupInspector(
+        LumapiBridge(raw), catalog, tmp_path / "work", SessionOperationGate()
+    )
+    return AnalysisGroupService(
+        adapter=WindowsFdtdAdapter(raw),
+        bridge=LumapiBridge(raw),
+        catalog=catalog,
+        inspector=inspector,
+    ), raw
+
+
+def test_service_selects_probes_configures_and_verifies_builtin(tmp_path):
+    runtime, fdtd = service(tmp_path)
+    result = runtime.create({
+        "name": "power_analysis",
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "recipe_context": {
+            "solver": {"x span": 3e-6},
+            "monitors": [{"type": "power_monitor"}],
+            "outputs": ["T"],
+            "fom": {"result": "T"},
+        },
+        "parameter_overrides": {},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "properties": {},
+        "dry_run": False,
+    })
+
+    assert result["source"] == "builtin"
+    assert result["script_id"] == "power_transmission_box"
+    assert result["parameters"]["applied"]["x span"] == 3e-6
+    assert result["setup_verified"] is True
+    assert result["physical_conclusion"] is False
+    assert fdtd.runsetup_calls == ["power_analysis"]
+
+
+def test_dry_run_never_executes_probe(tmp_path):
+    runtime, fdtd = service(tmp_path)
+    before = dict(fdtd.saved)
+    result = runtime.create({
+        "name": "power_analysis",
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "recipe_context": {"outputs": ["T"]},
+        "parameter_overrides": {},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "properties": {},
+        "dry_run": True,
+    })
+    assert fdtd.saved == before
+    assert result["probe_required"] is True
+
+
+def test_low_confidence_falls_back_to_custom(tmp_path):
+    runtime, _ = service(tmp_path)
+    result = runtime.create({
+        "name": "unknown_analysis",
+        "analysis_intent": {"kind": "unknown", "outputs": []},
+        "recipe_context": {},
+        "parameter_overrides": {},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "properties": {},
+        "dry_run": False,
+    })
+    assert result["source"] == "custom"
+    assert result["fallback_used"] is True
+    assert result["fallback_reason"] == "no_high_confidence_match"
+
+
+def test_require_builtin_rejects_low_confidence(tmp_path):
+    runtime, _ = service(tmp_path)
+    with pytest.raises(AnalysisRuntimeError) as exc:
+        runtime.create({
+            "name": "required",
+            "analysis_intent": {"kind": "unknown", "outputs": []},
+            "recipe_context": {},
+            "parameter_overrides": {},
+            "prefer_builtin": False,
+            "require_builtin": True,
+            "script_id": "",
+            "properties": {},
+            "dry_run": False,
+        })
+    assert exc.value.error_type == "builtin_analysis_group_no_high_confidence_match"
