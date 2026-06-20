@@ -206,8 +206,8 @@ class RpcClient:
 
     # Project management (Task 1 stubs — routed to _get/_post)
 
-    def project_new(self, body: Optional[dict] = None) -> dict:
-        return self._post("/project/new", body or {})
+    def project_new(self, name: str = "untitled", discard_unsaved: bool = False) -> dict:
+        return self._post("/project/new", {"name": name, "discard_unsaved": discard_unsaved})
 
     def project_load(self, file_path: str) -> dict:
         return self._post("/project/load", {"file_path": file_path})
@@ -222,17 +222,27 @@ class RpcClient:
         return self._get("/project/status")
 
     def switch_to_layout(self) -> dict:
-        return self._post("/project/switch-to-layout")
+        return self._post("/model/layout")
 
     # Object management (Task 1 stubs)
 
-    def object_create(self, body: dict) -> dict:
-        return self._post("/objects/create", body)
+    def object_create(
+        self, object_type: str, name: str, properties: dict, dry_run: bool = False
+    ) -> dict:
+        return self._post(
+            "/objects",
+            {
+                "object_type": object_type,
+                "name": name,
+                "properties": properties,
+                "dry_run": dry_run,
+            },
+        )
 
     def object_list(self) -> dict:
         return self._get("/objects")
 
-    def object_get(self, name: str) -> dict:
+    def object_get(self, name: str, scope: Optional[str] = None) -> dict:
         return self._get(f"/objects/{quote(name, safe='')}")
 
     def object_update(self, name: str, body: dict) -> dict:
@@ -292,8 +302,18 @@ class RpcClient:
 
     # Source management (Task 1 stubs)
 
-    def source_create(self, body: dict) -> dict:
-        return self._post("/sources/create", body)
+    def source_create(
+        self, source_type: str, name: str, properties: dict, dry_run: bool = False
+    ) -> dict:
+        return self._post(
+            "/sources",
+            {
+                "source_type": source_type,
+                "name": name,
+                "properties": properties,
+                "dry_run": dry_run,
+            },
+        )
 
     def source_get(self, name: str) -> dict:
         return self._get(f"/sources/{quote(name, safe='')}")
@@ -303,8 +323,18 @@ class RpcClient:
 
     # Monitor management (Task 1 stubs)
 
-    def monitor_create(self, body: dict) -> dict:
-        return self._post("/monitors/create", body)
+    def monitor_create(
+        self, monitor_type: str, name: str, properties: dict, dry_run: bool = False
+    ) -> dict:
+        return self._post(
+            "/monitors",
+            {
+                "monitor_type": monitor_type,
+                "name": name,
+                "properties": properties,
+                "dry_run": dry_run,
+            },
+        )
 
     def monitor_get(self, name: str) -> dict:
         return self._get(f"/monitors/{quote(name, safe='')}")
@@ -314,8 +344,17 @@ class RpcClient:
 
     # Analysis group management (Task 1 stubs)
 
-    def analysis_group_create(self, body: dict) -> dict:
-        return self._post("/analysis-groups/create", body)
+    def analysis_group_create(
+        self, name: str, properties: dict, dry_run: bool = False
+    ) -> dict:
+        return self._post(
+            "/analysis-groups",
+            {
+                "name": name,
+                "properties": properties,
+                "dry_run": dry_run,
+            },
+        )
 
     def analysis_group_get(self, name: str) -> dict:
         return self._get(f"/analysis-groups/{quote(name, safe='')}")
@@ -325,11 +364,16 @@ class RpcClient:
 
     # Result inspection (Task 1 stubs)
 
+    def result_list(self) -> dict:
+        return self._get("/results")
+
     def result_describe(self, name: str) -> dict:
         return self._get(f"/results/{quote(name, safe='')}/describe")
 
-    def result_read(self, name: str, body: Optional[dict] = None) -> dict:
-        return self._post(f"/results/{quote(name, safe='')}/read", body or {})
+    def result_read(self, name: str, attribute: str) -> dict:
+        return self._get(
+            f"/results/{quote(name, safe='')}/{quote(attribute, safe='')}"
+        )
 
     # Deployed sweep server extensions
 

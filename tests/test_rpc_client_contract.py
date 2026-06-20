@@ -34,7 +34,14 @@ def fake_http_server():
                 }
             )
 
-            if self.path.startswith("/results/") and state["status"] == 200:
+            if (
+                self.path.startswith("/results/")
+                and state["status"] == 200
+                and any(
+                    self.path.endswith(ext)
+                    for ext in (".mat", ".fsp", ".ldf", ".txt", ".json", ".h5", ".dat")
+                )
+            ):
                 content = state["download"]
                 self.send_response(200)
                 self.send_header("Content-Type", "application/octet-stream")
@@ -128,6 +135,50 @@ def fake_http_server():
             "/jobs/job_1/resume",
             {"mode": "mock"},
         ),
+        # --- v1 typed API: project management ---
+        ("project_new", ("new_device", True), "POST", "/project/new", {"name": "new_device", "discard_unsaved": True}),
+        ("project_status", (), "GET", "/project/status", None),
+        ("project_load", ("test.fsp",), "POST", "/project/load", {"file_path": "test.fsp"}),
+        ("project_save", ("test.fsp",), "POST", "/project/save", {"file_path": "test.fsp"}),
+        # --- v1 typed API: model ---
+        ("switch_to_layout", (), "POST", "/model/layout", {}),
+        # --- v1 typed API: objects ---
+        ("object_create", ("rectangle", "rect_1", {"x span": 1e-6}, True), "POST", "/objects", {"object_type": "rectangle", "name": "rect_1", "properties": {"x span": 1e-6}, "dry_run": True}),
+        ("object_get", ("rect_1", None), "GET", "/objects/rect_1", None),
+        ("object_list", (), "GET", "/objects", None),
+        ("object_update", ("rect_1", {"x span": 2e-6}), "POST", "/objects/rect_1/update", {"x span": 2e-6}),
+        ("object_copy", ("rect_1", "rect_2"), "POST", "/objects/rect_1/copy", {"new_name": "rect_2"}),
+        ("object_rename", ("rect_1", "wg"), "POST", "/objects/rect_1/rename", {"new_name": "wg"}),
+        ("object_delete", ("rect_1",), "POST", "/objects/rect_1/delete", {}),
+        ("group_update", ({"updates": []},), "POST", "/objects/group-update", {"updates": []}),
+        # --- v1 typed API: materials ---
+        ("material_list", (), "GET", "/materials", None),
+        ("material_create", ({"name": "Si", "index": 3.5},), "POST", "/materials/create", {"name": "Si", "index": 3.5}),
+        ("material_get", ("Si",), "GET", "/materials/Si", None),
+        ("material_update", ("Si", {"index": 4.0}), "POST", "/materials/Si/update", {"index": 4.0}),
+        ("material_assign", ({"material": "Si", "objects": ["rect_1"]},), "POST", "/materials/assign", {"material": "Si", "objects": ["rect_1"]}),
+        ("material_fit_diagnose", ({"material": "Si"},), "POST", "/materials/fit-diagnose", {"material": "Si"}),
+        # --- v1 typed API: solver ---
+        ("solver_get", (), "GET", "/solver", None),
+        ("solver_update", ({"mesh_accuracy": 3},), "POST", "/solver/update", {"mesh_accuracy": 3}),
+        ("mesh_diagnose", (), "GET", "/solver/mesh-diagnose", None),
+        ("resource_estimate", (), "GET", "/solver/resource-estimate", None),
+        # --- v1 typed API: sources ---
+        ("source_create", ("plane_source", "src", {"wavelength start": 1.5e-6}, True), "POST", "/sources", {"source_type": "plane_source", "name": "src", "properties": {"wavelength start": 1.5e-6}, "dry_run": True}),
+        ("source_get", ("src",), "GET", "/sources/src", None),
+        ("source_update", ("src", {"wavelength": 1.55e-6}), "POST", "/sources/src/update", {"wavelength": 1.55e-6}),
+        # --- v1 typed API: monitors ---
+        ("monitor_create", ("power_monitor", "mon", {"frequency points": 5}, True), "POST", "/monitors", {"monitor_type": "power_monitor", "name": "mon", "properties": {"frequency points": 5}, "dry_run": True}),
+        ("monitor_get", ("mon",), "GET", "/monitors/mon", None),
+        ("monitor_update", ("mon", {"frequency points": 10}), "POST", "/monitors/mon/update", {"frequency points": 10}),
+        # --- v1 typed API: analysis groups ---
+        ("analysis_group_create", ("ag", {"script": "T=1;"}, True), "POST", "/analysis-groups", {"name": "ag", "properties": {"script": "T=1;"}, "dry_run": True}),
+        ("analysis_group_get", ("ag",), "GET", "/analysis-groups/ag", None),
+        ("analysis_group_update", ("ag", {"script": "T=0.5;"}), "POST", "/analysis-groups/ag/update", {"script": "T=0.5;"}),
+        # --- v1 typed API: results ---
+        ("result_list", (), "GET", "/results", None),
+        ("result_read", ("mon", "T"), "GET", "/results/mon/T", None),
+        ("result_describe", ("mon",), "GET", "/results/mon/describe", None),
     ],
 )
 def test_client_uses_v1_routes(
