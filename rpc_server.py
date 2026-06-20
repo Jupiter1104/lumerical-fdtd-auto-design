@@ -1103,17 +1103,19 @@ def create_app(
                 require_builtin=data.get("require_builtin", False),
                 script_id=data.get("script_id", ""),
             ))
-        return _success(analysis_group_service.create({
-            "name": _required(data, "name"),
-            "properties": data.get("properties", {}),
-            "analysis_intent": data.get("analysis_intent"),
-            "recipe_context": data.get("recipe_context", {}),
-            "parameter_overrides": data.get("parameter_overrides", {}),
-            "prefer_builtin": data.get("prefer_builtin", False),
-            "require_builtin": data.get("require_builtin", False),
-            "script_id": data.get("script_id", ""),
-            "dry_run": data.get("dry_run", False),
-        }))
+        with operation_gate.acquire("analysis_group_create"):
+            result = analysis_group_service.create({
+                "name": _required(data, "name"),
+                "properties": data.get("properties", {}),
+                "analysis_intent": data.get("analysis_intent"),
+                "recipe_context": data.get("recipe_context", {}),
+                "parameter_overrides": data.get("parameter_overrides", {}),
+                "prefer_builtin": data.get("prefer_builtin", False),
+                "require_builtin": data.get("require_builtin", False),
+                "script_id": data.get("script_id", ""),
+                "dry_run": data.get("dry_run", False),
+            })
+        return _success(result)
 
     @app.get("/analysis-groups/<name>")
     def analysis_groups_get(name):
