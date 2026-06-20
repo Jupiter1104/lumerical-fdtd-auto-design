@@ -272,6 +272,7 @@ def test_session_close_detaches_when_backend_close_hangs(
             "connected": False,
             "version": None,
             "model_file": None,
+            "object_library": {"status": "unavailable"},
         }
     finally:
         release_close.set()
@@ -460,3 +461,88 @@ def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session):
     save_calls = [c for c in fake_session.calls if c[0] == "save"]
     assert len(save_calls) == 1
     assert save_calls[0][1]["file_path"] == output_path
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Object library catalog tests (Task 2)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_session_start_enumerates_object_library_once(
+    server_module, monkeypatch, tmp_path
+):
+    from src.object_library_catalog import ObjectLibraryCatalog
+
+    class RawFdtd:
+        def __init__(self):
+            self.addobject_calls = 0
+
+        def getversion(self):
+            return "2024 R2.4"
+
+        def addobject(self):
+            self.addobject_calls += 1
+            return ["power_box", "farfield_box"]
+
+        def close(self):
+            pass
+
+    raw = RawFdtd()
+
+    class FakeLumapi:
+        __file__ = None
+
+        @staticmethod
+        def FDTD(hide=False):
+            return raw
+
+    manager = server_module.SessionManager()
+    manager._fdtd = None
+    manager.configure_object_library(ObjectLibraryCatalog(tmp_path))
+    monkeypatch.setattr(server_module, "_import_lumapi", lambda: FakeLumapi)
+
+    result = manager.start(hide=True)
+
+    assert raw.addobject_calls == 1
+    assert result["object_library"]["status"] in {"ready", "identity_unstable"}
+    assert result["object_library"]["script_id_count"] == 2
+    assert manager.status()["object_library"]["script_id_count"] == 2
+    manager.close()
+
+
+def test_catalog_enumeration_failure_keeps_session_active(
+    server_module, monkeypatch, tmp_path
+):
+    from src.object_library_catalog import ObjectLibraryCatalog
+
+    class RawFdtd:
+        def getversion(self):
+            return "2024 R2.4"
+
+        def addobject(self):
+            raise RuntimeError("library unavailable")
+
+        def close(self):
+            pass
+
+    class FakeLumapi:
+        __file__ = None
+
+        @staticmethod
+        def FDTD(hide=False):
+            return RawFdtd()
+
+    manager = server_module.SessionManager()
+    manager._fdtd = None
+    manager.configure_object_library(ObjectLibraryCatalog(tmp_path))
+    monkeypatch.setattr(server_module, "_import_lumapi", lambda: FakeLumapi)
+
+    result = manager.start()
+
+    assert manager.is_connected is True
+    assert result["object_library"]["status"] == "unavailable"
+    assert (
+        result["object_library"]["enumeration_error"]["type"]
+        == "object_library_enumeration_failed"
+    )
+    manager.close()

@@ -21,6 +21,11 @@ from werkzeug.exceptions import HTTPException
 
 from src.device_recipe import compile_recipe
 from src.job_store import JobError, JobStore
+from src.object_library_catalog import (
+    ObjectLibraryCatalog,
+    build_installation_identity,
+    resolve_object_library_root,
+)
 from src.native_sweep import NativeSweepRunner
 from src.sweep_job import write_job_artifacts
 from src.windows_fdtd_adapter import AdapterError, WindowsFdtdAdapter
@@ -100,6 +105,8 @@ class SessionManager:
     _fdtd = None
     _model_file: Optional[str] = None
     _lock = threading.Lock()
+    _object_library_catalog = None
+    _object_library_status = {"status": "unavailable"}
 
     def __new__(cls):
         if cls._instance is None:
@@ -137,6 +144,78 @@ class SessionManager:
             logger.warning("Could not read the FDTD version.", exc_info=True)
             return "unknown"
 
+    def configure_object_library(self, catalog: ObjectLibraryCatalog) -> None:
+        self._object_library_catalog = catalog
+        self._object_library_status = self._public_catalog_summary(
+            catalog.summary()
+        )
+
+    @staticmethod
+    def _public_catalog_summary(summary: dict) -> dict:
+        public = dict(summary)
+        raw_path = public.get("catalog_path")
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        public["catalog_path"] = None
+        if raw_path and local_app_data:
+            try:
+                relative = Path(raw_path).resolve().relative_to(
+                    Path(local_app_data).resolve()
+                )
+                public["catalog_path"] = str(
+                    Path("%LOCALAPPDATA%") / relative
+                )
+            except ValueError:
+                pass
+        return public
+
+    @staticmethod
+    def _enumerate_object_library_ids(fdtd) -> list[str]:
+        addobject = getattr(fdtd, "addobject", None)
+        if callable(addobject):
+            raw = addobject()
+        else:
+            fdtd.eval("__fdtd_mcp_object_library=addobject;")
+            raw = fdtd.getv("__fdtd_mcp_object_library")
+        converted = _to_jsonable(raw)
+        if isinstance(converted, str):
+            return [line.strip() for line in converted.splitlines() if line.strip()]
+        if isinstance(converted, list):
+            return [str(item) for item in converted]
+        return []
+
+    def _initialize_object_library(self, lumapi, version: str) -> dict:
+        catalog = self._object_library_catalog
+        if catalog is None:
+            catalog = ObjectLibraryCatalog(resolve_object_library_root())
+            self.configure_object_library(catalog)
+        identity = build_installation_identity(
+            solver_version=version,
+            python_executable=sys.executable,
+            lumapi_file=getattr(lumapi, "__file__", None),
+        )
+        try:
+            catalog.ensure(
+                identity,
+                lambda: self._enumerate_object_library_ids(self._fdtd),
+            )
+            self._object_library_status = self._public_catalog_summary(
+                catalog.summary()
+            )
+        except Exception as exc:
+            self._object_library_status = {
+                "status": "unavailable",
+                "identity": "",
+                "script_id_count": 0,
+                "verified_analysis_group_count": 0,
+                "generated_at": None,
+                "catalog_path": None,
+                "enumeration_error": {
+                    "type": "object_library_enumeration_failed",
+                    "message": str(exc),
+                },
+            }
+        return self._object_library_status
+
     def start(self, hide: bool = False) -> dict:
         """Start the only allowed FDTD session."""
         with self._lock:
@@ -164,10 +243,12 @@ class SessionManager:
                 raise
 
             logger.info("FDTD session started (version=%s, hide=%s)", version, hide)
+            object_library_status = self._initialize_object_library(lumapi, version)
             return {
                 "version": version,
                 "hide": hide,
                 "message": f"FDTD {version} session started.",
+                "object_library": object_library_status,
             }
 
     @staticmethod
@@ -208,6 +289,7 @@ class SessionManager:
             fdtd = self._fdtd
             self._fdtd = None
             self._model_file = None
+            self._object_library_status = {"status": "unavailable"}
 
         close_state = self._close_backend(fdtd)
         if close_state == "closed":
@@ -224,6 +306,7 @@ class SessionManager:
                 "connected": False,
                 "version": None,
                 "model_file": None,
+                "object_library": self._object_library_status,
             }
         try:
             version = self._get_version(self._fdtd)
@@ -233,6 +316,7 @@ class SessionManager:
             "connected": True,
             "version": version,
             "model_file": self._model_file,
+            "object_library": self._object_library_status,
         }
 
     def save(self, file_path: Optional[str] = None) -> dict:
@@ -518,6 +602,10 @@ def create_app(
     """
     app = Flask(__name__)
     session = session_manager or SessionManager()
+    if isinstance(session, SessionManager) and session._object_library_catalog is None:
+        session.configure_object_library(
+            ObjectLibraryCatalog(resolve_object_library_root())
+        )
     jobs = job_store or JobStore()
     jobs.recover_interrupted_jobs()
     runner = sweep_runner or NativeSweepRunner(session, jobs)

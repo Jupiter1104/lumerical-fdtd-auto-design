@@ -37,7 +37,7 @@ def register_session_tools(mcp: FastMCP, rpc: RpcClient) -> None:
             hide: If True, hide FDTD GUI. Default False (GUI visible).
 
         Returns:
-            {"ok": true, "version": "...", "hide": bool, "message": "..."}
+            {"ok": true, "version": "...", "hide": bool, "message": "...", "object_library": {...}}
         """
         return rpc.session_start(hide=hide)
 
