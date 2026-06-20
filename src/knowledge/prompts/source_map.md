@@ -35,6 +35,8 @@
 | adddftmonitor - Script command | https://optics.ansys.com/hc/en-us/articles/36957320687763-adddftmonitor-Script-command | 官方文档 | frequency-domain monitor 创建，替代 deprecated addpower/addprofile | Yes | P0 |
 | addtime - Script command | https://optics.ansys.com/hc/en-us/articles/360034404494-addtime | 官方文档 | time monitor 创建 | Yes | P1 |
 | addanalysisgroup - Script command | https://optics.ansys.com/hc/en-us/articles/360034404074-addanalysisgroup-Script-command | 官方文档 | analysis group 创建 | Yes | P1 |
+| addobject - Script command | https://optics.ansys.com/hc/en-us/articles/360034404094-addobject-Script-command | 官方文档 | 从 Object Library 插入预定义对象/analysis group；可枚举库对象 | Yes | P1 |
+| Object Library in FDTD and MODE | https://optics.ansys.com/hc/en-us/articles/360034394494-Object-Library-in-FDTD-and-MODE | 官方文档 | Object Library 搜索、插入、不可修改规则 | Yes | P1 |
 | newproject - Script command | https://optics.ansys.com/hc/en-us/articles/360034931473-newproject-Script-command | 官方文档 | 创建新 project；注意旧项目不会自动保存 | Partial | P1 |
 | set - Script command | https://optics.ansys.com/hc/en-us/articles/360034928773-set-Script-command | 官方文档 | 设置当前选中对象属性 | Yes | P0 |
 | setnamed - Script command | https://optics.ansys.com/hc/en-us/articles/360034928793-setnamed-Script-command | 官方文档 | 按名称设置对象属性 | Yes | P0 |

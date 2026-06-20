@@ -761,3 +761,11 @@
 - 产物：`smoke_model.fsp`、`smoke_report.json`、`downloaded_results.json`。
 - 现场必要容差：FDTD 冷启动需约 17-20 秒，`session_start` timeout 固化为 30 秒；同步 run 预算固化为 600 秒。端口 `5001` 仅作为 `5000` 被僵尸 TCP 条目锁死时的临时 `--rpc` 参数，不改项目默认端口。
 - 注意：`mon/T` 负值只作为结果读取证据，不构成物理结论。
+
+## 2026-06-20 - 官方 Analysis Group 知识补齐
+
+- 目标：为“添加分析组时优先使用官方自带分析组”先补官方来源依据，不直接猜测库对象 ID。
+- 来源：Ansys 官方 Analysis Groups、Object Library、Object Library objects and related analysis、`addanalysisgroup` 和 `addobject` 文档。
+- 结论：自定义空白 group 用 `addanalysisgroup`；官方 Object Library 预定义对象/analysis group 用 `addobject("script_ID")`；`addobject;` 可在目标版本枚举可用对象名。
+- 修改：新增 `src/knowledge/prompts/lumerical_analysis_groups.md`，并同步 `lumerical_fdtd_automation_manual.md`、`lumerical_command_index.md`、`source_map.md`。
+- 后续：实现 MCP 行为前，应先在 Windows v242 侧做只读 `addobject;` 枚举，把确认过的 `script_ID` 写入 registry；未确认 ID 不得由 Agent 猜测。

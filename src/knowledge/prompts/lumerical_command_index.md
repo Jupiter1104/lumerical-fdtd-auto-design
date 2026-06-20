@@ -204,7 +204,7 @@ set("x", 0); set("y", 0); set("z", 0);
 
 - 功能：添加 analysis group。
 - 什么时候用：封装 monitors 与 analysis script。
-- 不要什么时候用：不要把全局优化决策写进 analysis group；Agent 决策应在 Python 层留日志。
+- 不要什么时候用：不要把全局优化决策写进 analysis group；Agent 决策应在 Python 层留日志。若要插入官方 Object Library 预定义 analysis group，优先用 `addobject("script_ID")`。
 - 常见参数：`addanalysisgroup;` 或 `addanalysisgroup(struct_data);`
 - 返回值：None。
 - 示例：
@@ -216,6 +216,29 @@ set("name", "analysis_T");
 
 - 常见坑：已有数据的 analysis script 不会自动重复运行，重跑前用 `clearanalysis`。
 - 官方来源 URL：https://optics.ansys.com/hc/en-us/articles/360034404074-addanalysisgroup-Script-command
+
+## addobject
+
+- 功能：从 Object Library 添加预定义对象或 analysis group；无参数调用可返回当前版本可用对象名称列表。
+- 什么时候用：用户要求优先使用官方自带 analysis group，且已通过 `addobject;` 或官方资料确认 `script_ID`。
+- 不要什么时候用：不要猜测 `script_ID`；找不到确认 ID 时应回退 `addanalysisgroup` 自定义路径或在 `require_builtin=true` 时明确报错。
+- 常见参数：`addobject("script_ID");` 或 `A = addobject;`
+- 返回值：插入对象时 None；无参数时返回对象库名称 cell array。
+- 示例：
+
+```lsf
+A = addobject;
+L = length(A);
+for (i = 1:L) {
+  ?A{i};
+}
+
+addobject("rounded_cyl");
+set("name", "test_cyl");
+```
+
+- 常见坑：Object Library 官方说明为不可由用户修改；不同 Lumerical 版本的库对象/ID 可能不同，应以 Windows 目标版本枚举为准。
+- 官方来源 URL：https://optics.ansys.com/hc/en-us/articles/360034404094-addobject-Script-command
 
 ## set
 

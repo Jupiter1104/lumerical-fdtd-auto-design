@@ -239,7 +239,8 @@ setnamed("FDTD", "z max bc", "PML");
 - 常用属性：`setup script`, analysis script, user properties, analysis results。
 - 设置原则：只把稳定后处理封装进 group；复杂优化决策留在 Python 层，便于日志和异常处理。
 - 自动化注意：`runanalysis` 不会重复运行已有数据的 analysis script，重跑前用 `clearanalysis`。
-- 相关命令：`addanalysisgroup`, `adduserprop`, `runanalysis`, `clearanalysis`, `getresult`。
+- 相关命令：`addanalysisgroup`, `addobject`, `adduserprop`, `runanalysis`, `clearanalysis`, `getresult`。
+- 官方库优先：空白/自定义 group 用 `addanalysisgroup`；官方 Object Library 预定义 analysis group 用 `addobject("script_ID")`。`script_ID` 应来自当前版本 `addobject;` 枚举或官方明确 ID，不要由 Agent 猜测。
 - 最小示例：
 
 ```lsf
@@ -249,9 +250,24 @@ addtime;
 addtogroup("analysis_T");
 ```
 
+官方 Object Library 示例：
+
+```lsf
+# 枚举当前版本 Object Library 对象/analysis groups
+A = addobject;
+L = length(A);
+for (i = 1:L) { ?A{i}; }
+
+# 插入已确认的官方库对象
+addobject("script_ID");
+set("name", "analysis_builtin");
+```
+
 来源：
 - https://optics.ansys.com/hc/en-us/articles/360034382454-Analysis-Groups-Simulation-object
 - https://optics.ansys.com/hc/en-us/articles/360034404074-addanalysisgroup-Script-command
+- https://optics.ansys.com/hc/en-us/articles/360034404094-addobject-Script-command
+- https://optics.ansys.com/hc/en-us/articles/360034394494-Object-Library-in-FDTD-and-MODE
 - https://optics.ansys.com/hc/en-us/articles/360034409874-runanalysis-Script-command
 
 ### parameter sweep
