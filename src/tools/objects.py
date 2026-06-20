@@ -9,16 +9,25 @@ def register_object_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     """Register FDTD simulation object CRUD tools."""
 
     @mcp.tool()
-    def fdtd_object_create(body: dict) -> dict:
+    def fdtd_object_create(body: dict, dry_run: bool = False) -> dict:
         """
         Create a simulation object (rectangle, circle, polygon, etc.).
 
         Args:
             body: Object specification with type, geometry, and material.
+            dry_run: If True, return a mock success without calling RPC.
 
         Returns:
             Creation confirmation with object name.
         """
+        if dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "name": body.get("name", "dry_run_object"),
+                "type": body.get("type", "unknown"),
+                "message": "Dry-run: no RPC call made.",
+            }
         return rpc.object_create(body)
 
     @mcp.tool()

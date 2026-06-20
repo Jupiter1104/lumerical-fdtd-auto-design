@@ -128,7 +128,7 @@ def collect_registered_tool_names_for_tests() -> list:
 def main() -> None:
     """Run the MCP server."""
     logger.info(f"Starting FDTD MCP Server → {RPC_URL}")
-    register_all_tools()
+    register_deliverable_tools(mcp, rpc)
     mcp.run()
 
 

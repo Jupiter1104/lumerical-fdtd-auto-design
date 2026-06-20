@@ -9,16 +9,25 @@ def register_source_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     """Register FDTD source management tools."""
 
     @mcp.tool()
-    def fdtd_source_create(body: dict) -> dict:
+    def fdtd_source_create(body: dict, dry_run: bool = False) -> dict:
         """
         Create a simulation source (mode, gaussian, plane wave, etc.).
 
         Args:
             body: Source specification (type, geometry, wavelength, polarization).
+            dry_run: If True, return a mock success without calling RPC.
 
         Returns:
             Creation confirmation with source name.
         """
+        if dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "type": body.get("type", "unknown"),
+                "wavelength": body.get("wavelength"),
+                "message": "Dry-run: no RPC call made.",
+            }
         return rpc.source_create(body)
 
     @mcp.tool()

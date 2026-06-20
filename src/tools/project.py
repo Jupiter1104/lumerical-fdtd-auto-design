@@ -50,13 +50,24 @@ def register_project_tools(mcp: FastMCP, rpc: RpcClient) -> None:
         return rpc.project_save(file_path)
 
     @mcp.tool()
-    def fdtd_project_status() -> dict:
+    def fdtd_project_status(dry_run: bool = False) -> dict:
         """
         Get the current project status.
+
+        Args:
+            dry_run: If True, return a mock status without calling RPC.
 
         Returns:
             Project metadata and state.
         """
+        if dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "project": None,
+                "status": "mock_no_rpc",
+                "message": "Dry-run: no RPC call made.",
+            }
         return rpc.project_status()
 
     @mcp.tool()

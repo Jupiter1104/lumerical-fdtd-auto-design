@@ -9,16 +9,25 @@ def register_monitor_tools(mcp: FastMCP, rpc: RpcClient) -> None:
     """Register FDTD monitor management tools."""
 
     @mcp.tool()
-    def fdtd_monitor_create(body: dict) -> dict:
+    def fdtd_monitor_create(body: dict, dry_run: bool = False) -> dict:
         """
         Create a simulation monitor (frequency-domain, time-domain, movie, etc.).
 
         Args:
             body: Monitor specification (type, geometry, frequency points).
+            dry_run: If True, return a mock success without calling RPC.
 
         Returns:
             Creation confirmation with monitor name.
         """
+        if dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "name": body.get("name", "dry_run_monitor"),
+                "type": body.get("type", "unknown"),
+                "message": "Dry-run: no RPC call made.",
+            }
         return rpc.monitor_create(body)
 
     @mcp.tool()
