@@ -101,3 +101,52 @@ def test_small_gap_does_not_auto_select():
         {"script_id": "a", "score": 0.90},
         {"script_id": "b", "score": 0.80},
     ]) is None
+
+
+from src.analysis_group_selection import (
+    AnalysisSelectionError,
+    resolve_analysis_parameters,
+)
+
+
+PROBE = {
+    "setup_properties": [
+        {"name": "x span", "type_code": 2, "default_value": 2e-6, "default_readable": True},
+        {"name": "material", "type_code": 5, "default_value": "Si", "default_readable": True},
+    ],
+    "analysis_properties": [
+        {"name": "make plots", "type_code": 0, "default_value": 1, "default_readable": True},
+    ],
+}
+
+
+def test_override_beats_context_and_default():
+    result = resolve_analysis_parameters(
+        PROBE,
+        {"x span": 4e-6},
+        {"solver": {"x span": 3e-6}},
+    )
+    assert result["applied"]["x span"] == 4e-6
+    assert result["sources"]["x span"] == "parameter_overrides"
+
+
+def test_solver_span_is_used_when_unique_and_override_absent():
+    result = resolve_analysis_parameters(
+        PROBE,
+        {},
+        {"solver": {"x span": 3e-6}},
+    )
+    assert result["applied"]["x span"] == 3e-6
+    assert result["defaults_preserved"]["material"] == "Si"
+
+
+def test_unknown_override_is_rejected():
+    with pytest.raises(AnalysisSelectionError) as exc:
+        resolve_analysis_parameters(PROBE, {"not real": 1}, {})
+    assert exc.value.error_type == "analysis_parameter_unknown"
+
+
+def test_type_mismatch_is_rejected():
+    with pytest.raises(AnalysisSelectionError) as exc:
+        resolve_analysis_parameters(PROBE, {"x span": "wide"}, {})
+    assert exc.value.error_type == "analysis_parameter_type_mismatch"

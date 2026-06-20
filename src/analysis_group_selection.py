@@ -224,3 +224,126 @@ def choose_high_confidence(ranked: list[dict]) -> dict | None:
     if len(ranked) > 1 and ranked[0]["score"] - ranked[1]["score"] < AUTO_SELECT_GAP:
         return None
     return ranked[0]
+
+
+class AnalysisSelectionError(Exception):
+    def __init__(
+        self,
+        error_type: str,
+        message: str,
+        details: dict | None = None,
+    ):
+        super().__init__(message)
+        self.error_type = error_type
+        self.message = message
+        self.details = details or {}
+
+
+TYPE_NAMES = {
+    0: "number",
+    1: "string",
+    2: "length",
+    3: "time",
+    4: "frequency",
+    5: "material",
+    6: "matrix",
+}
+
+PROPERTY_ALIASES = {
+    "x span": ("x span", "x_span"),
+    "y span": ("y span", "y_span"),
+    "z span": ("z span", "z_span"),
+    "wavelength start": ("wavelength start", "wavelength_start"),
+    "wavelength stop": ("wavelength stop", "wavelength_stop"),
+}
+
+
+def normalize_property_type(type_code: int) -> str:
+    return TYPE_NAMES.get(type_code, "unknown")
+
+
+def _compatible(type_name: str, value) -> bool:
+    if type_name in {"number", "length", "time", "frequency"}:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if type_name in {"string", "material"}:
+        return isinstance(value, str)
+    if type_name == "matrix":
+        return isinstance(value, list)
+    return True
+
+
+def _context_value(name: str, context: dict):
+    aliases = PROPERTY_ALIASES.get(name, (name, name.replace(" ", "_")))
+    containers = [
+        context.get("explicit_properties", {}),
+        context.get("solver", {}),
+    ]
+    for container in containers:
+        for alias in aliases:
+            if alias in container:
+                return container[alias], "recipe_context"
+
+    matching = []
+    for section in ("monitors", "sources"):
+        for item in context.get(section, []):
+            props = item.get("properties", {}) if isinstance(item, dict) else {}
+            for alias in aliases:
+                if alias in props:
+                    matching.append(props[alias])
+    if len(matching) == 1:
+        return matching[0], "recipe_context"
+    return None, None
+
+
+def resolve_analysis_parameters(
+    probe: dict,
+    overrides: dict,
+    recipe_context: dict,
+) -> dict:
+    schema = {
+        item["name"]: item
+        for key in ("setup_properties", "analysis_properties")
+        for item in probe.get(key, [])
+    }
+    unknown = sorted(set(overrides) - set(schema))
+    if unknown:
+        raise AnalysisSelectionError(
+            "analysis_parameter_unknown",
+            "parameter_overrides contains unknown analysis parameters.",
+            {"parameters": unknown},
+        )
+
+    applied = {}
+    defaults = {}
+    unresolved = []
+    sources = {}
+    for name, item in schema.items():
+        type_name = normalize_property_type(item.get("type_code", -1))
+        if name in overrides:
+            value = overrides[name]
+            source = "parameter_overrides"
+        else:
+            value, source = _context_value(name, recipe_context)
+        if source:
+            if not _compatible(type_name, value):
+                raise AnalysisSelectionError(
+                    "analysis_parameter_type_mismatch",
+                    f"Parameter {name!r} is incompatible with {type_name}.",
+                    {"parameter": name, "type": type_name},
+                )
+            applied[name] = value
+            sources[name] = source
+        elif item.get("default_readable"):
+            defaults[name] = item.get("default_value")
+        else:
+            unresolved.append({
+                "name": name,
+                "type": type_name,
+                "reason": "no_unique_source_and_default_unreadable",
+            })
+    return {
+        "applied": applied,
+        "defaults_preserved": defaults,
+        "unresolved": unresolved,
+        "sources": sources,
+    }
