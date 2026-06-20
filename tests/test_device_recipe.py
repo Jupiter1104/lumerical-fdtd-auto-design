@@ -318,6 +318,12 @@ def test_compile_produces_fingerprints():
     assert result["script_sha256"].startswith("sha256:")
     assert "script" in result
     assert len(result["script"]) > 0
+    assert "base_script" in result
+    assert result["base_script"] == result["script"]
+    assert "analysis_group_instructions" in result
+    assert result["analysis_group_instructions"] == []
+    assert "match_policy_version" in result
+    assert result["match_policy_version"] == "1.0"
     assert isinstance(result["object_lifecycle"], list)
     assert isinstance(result["assumptions_report"], list)
     assert "raw_hook_hashes" in result
@@ -342,7 +348,7 @@ def test_compile_order_matches_spec():
         "# === mesh",
         "# === source",
         "# === monitor",
-        "# === save model",
+        "# === analysis",
     ]
 
     positions = []
@@ -395,39 +401,67 @@ def test_compile_with_sources_and_monitors():
     assert "monitor_01" in obj_names
 
 
-def test_compile_with_builtin_analysis_group_uses_addobject():
-    """Builtin analysis groups compile through Object Library addobject."""
+def test_builtin_analysis_group_compiles_to_runtime_instruction():
+    """Builtin analysis groups produce runtime instructions, not addobject in base_script."""
     recipe = {
         **MINIMAL_RECIPE,
-        "analysis_groups": [
-            {
-                "type": "analysis_group",
-                "name": "analysis_builtin",
-                "script_id": "power_transmission_box",
-                "prefer_builtin": True,
-                "properties": {"x": 0},
-            }
-        ],
+        "outputs": ["T"],
+        "fom": {"result": "T"},
+        "analysis_groups": [{
+            "type": "analysis_group",
+            "name": "analysis_builtin",
+            "analysis_intent": {
+                "kind": "transmission",
+                "outputs": ["T"],
+            },
+            "prefer_builtin": True,
+            "require_builtin": False,
+            "script_id": "",
+            "parameter_overrides": {"x span": "${pillar_radius} * 4"},
+            "properties": {},
+        }],
     }
 
     result = compile_recipe(recipe)
 
     assert result["ok"] is True
-    assert 'addobject("power_transmission_box");' in result["script"]
-    assert 'set("name", "analysis_builtin");' in result["script"]
-    assert 'set("x", 0);' in result["script"]
-    assert "addanalysisgroup;" not in result["script"]
-    lifecycle = [
-        item for item in result["object_lifecycle"]
-        if item["name"] == "analysis_builtin"
-    ]
-    assert lifecycle == [{
+    assert "addobject(" not in result["base_script"]
+    assert 'save("device_model")' not in result["base_script"]
+    assert result["script"] == result["base_script"]
+    assert result["analysis_group_instructions"] == [{
         "name": "analysis_builtin",
-        "type": "analysis_group",
-        "source": "builtin",
-        "script_id": "power_transmission_box",
-        "fallback_used": False,
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "parameter_overrides": {"x span": 4e-7},
+        "properties": {},
+        "recipe_context": {
+            "solver": {},
+            "sources": [],
+            "monitors": [],
+            "outputs": ["T"],
+            "fom": {"result": "T"},
+        },
     }]
+    assert result["match_policy_version"] == "1.0"
+
+
+def test_custom_analysis_group_stays_in_base_script():
+    """Custom (non-builtin) analysis groups stay in base_script."""
+    recipe = {
+        **MINIMAL_RECIPE,
+        "analysis_groups": [{
+            "type": "analysis_group",
+            "name": "custom",
+            "prefer_builtin": False,
+            "require_builtin": False,
+            "properties": {"x": 0},
+        }],
+    }
+    result = compile_recipe(recipe)
+    assert "addanalysisgroup;" in result["base_script"]
+    assert result["analysis_group_instructions"] == []
 
 
 def test_compile_includes_assumptions_report():

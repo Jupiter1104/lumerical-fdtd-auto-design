@@ -765,9 +765,18 @@ def validate_recipe(recipe: dict) -> dict:
     normalized_monitors = _normalize_optional_list(
         recipe.get("monitors"), param_names
     )
-    normalized_analysis_groups = _normalize_optional_list(
+    normalized_analysis_groups = _normalize_analysis_groups(
         recipe.get("analysis_groups"), param_names
     )
+
+    # ── top-level optional fields for context ─────────────────────────────
+
+    normalized_outputs = recipe.get("outputs", [])
+    if not isinstance(normalized_outputs, list):
+        normalized_outputs = []
+    normalized_fom = recipe.get("fom", {})
+    if not isinstance(normalized_fom, dict):
+        normalized_fom = {}
 
     # ── hooks ────────────────────────────────────────────────────────────
 
@@ -789,6 +798,8 @@ def validate_recipe(recipe: dict) -> dict:
         "sources": normalized_sources,
         "monitors": normalized_monitors,
         "analysis_groups": normalized_analysis_groups,
+        "outputs": normalized_outputs,
+        "fom": normalized_fom,
         "pre_run": pre_run,
         "post_run": post_run,
     }
@@ -823,8 +834,55 @@ def _normalize_optional_list(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Analysis group normalization
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _normalize_analysis_groups(items: Any, param_names: set) -> List[dict]:
+    """Normalize an optional list of analysis group items.
+
+    Unlike generic sources/monitors, analysis groups carry
+    analysis_intent, parameter_overrides, prefer_builtin,
+    require_builtin, and script_id fields.
+    """
+    if not isinstance(items, list):
+        return []
+    normalized = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        intent = item.get("analysis_intent") or {}
+        overrides = dict(item.get("parameter_overrides", {}))
+        for name, value in overrides.items():
+            if isinstance(value, str) and "${" in value:
+                ast = parse_expression(value)
+                _check_param_refs(ast, param_names)
+        normalized.append({
+            "type": item.get("type", "analysis_group"),
+            "name": item.get("name", ""),
+            "properties": dict(item.get("properties", {})),
+            "analysis_intent": {
+                "kind": intent.get("kind", "unknown"),
+                "outputs": list(intent.get("outputs", [])),
+                **{
+                    key: intent[key]
+                    for key in ("region_role", "direction")
+                    if key in intent
+                },
+            },
+            "prefer_builtin": bool(item.get("prefer_builtin", False)),
+            "require_builtin": bool(item.get("require_builtin", False)),
+            "script_id": str(item.get("script_id", "")),
+            "parameter_overrides": overrides,
+        })
+    return normalized
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Recipe compilation
 # ═══════════════════════════════════════════════════════════════════════════
+
+MATCH_POLICY_VERSION = "1.0"
 
 
 def _resolve_param_values(params: dict) -> Dict[str, Union[int, float]]:
@@ -1200,19 +1258,55 @@ def compile_recipe(recipe: dict) -> dict:
     script_parts.extend(mon_lines)
     object_lifecycle.extend(mon_lifecycle)
 
-    # 10. analysis groups
+    # 10. analysis groups — split into runtime instructions vs custom
+    runtime_instructions = []
+    custom_groups = []
+    for group in normalized.get("analysis_groups", []):
+        runtime = bool(
+            group.get("prefer_builtin")
+            or group.get("require_builtin")
+            or group.get("script_id")
+        )
+        if runtime:
+            overrides = {
+                name: (
+                    evaluate_expression(parse_expression(value), param_values)
+                    if isinstance(value, str) and "${" in value
+                    else value
+                )
+                for name, value in group.get("parameter_overrides", {}).items()
+            }
+            runtime_instructions.append({
+                "name": group["name"],
+                "properties": group["properties"],
+                "analysis_intent": group.get("analysis_intent", {}),
+                "prefer_builtin": group["prefer_builtin"],
+                "require_builtin": group["require_builtin"],
+                "script_id": group["script_id"],
+                "parameter_overrides": overrides,
+                "recipe_context": {
+                    "solver": dict(normalized.get("solver", {})),
+                    "sources": normalized.get("sources", []),
+                    "monitors": normalized.get("monitors", []),
+                    "outputs": normalized.get("outputs", []),
+                    "fom": normalized.get("fom", {}),
+                },
+            })
+        else:
+            custom_groups.append(group)
+
+    # Generate base_script lines only for custom (non-runtime) groups
     ag_lines, ag_lifecycle = _generate_analysis_groups_script(
-        normalized.get("analysis_groups", []), param_values
+        custom_groups, param_values
     )
     script_parts.extend(ag_lines)
     object_lifecycle.extend(ag_lifecycle)
 
-    # 11. save model
-    script_parts.append("# === Save Model ===")
-    script_parts.append('save("device_model");')
-    script_parts.append("")
+    # NOTE: No save("device_model") in base_script — saving is the
+    # responsibility of the Windows build step, which runs after all
+    # runtime analysis-group instructions succeed.
 
-    # ── Assemble script ──────────────────────────────────────────────────
+    # ── Assemble base_script ─────────────────────────────────────────────
 
     header = [
         "# ============================================================",
@@ -1221,11 +1315,11 @@ def compile_recipe(recipe: dict) -> dict:
         "# ============================================================",
         "",
     ]
-    script = "\n".join(header + script_parts)
+    base_script = "\n".join(header + script_parts)
 
     # ── Compute fingerprints ─────────────────────────────────────────────
 
-    script_sha256 = _sha256_hex(script)
+    script_sha256 = _sha256_hex(base_script)
     assumptions_report = list(normalized.get("assumptions", []))
 
     compile_data = {
@@ -1234,6 +1328,8 @@ def compile_recipe(recipe: dict) -> dict:
         "assumptions_report": assumptions_report,
         "raw_hook_hashes": raw_hook_hashes,
         "object_lifecycle": object_lifecycle,
+        "analysis_group_instructions": runtime_instructions,
+        "match_policy_version": MATCH_POLICY_VERSION,
     }
     compile_fingerprint = fingerprint_json(compile_data)
 
@@ -1242,7 +1338,10 @@ def compile_recipe(recipe: dict) -> dict:
         "recipe_fingerprint": recipe_fingerprint,
         "compile_fingerprint": compile_fingerprint,
         "script_sha256": script_sha256,
-        "script": script,
+        "script": base_script,
+        "base_script": base_script,
+        "analysis_group_instructions": runtime_instructions,
+        "match_policy_version": MATCH_POLICY_VERSION,
         "object_lifecycle": object_lifecycle,
         "assumptions_report": assumptions_report,
         "raw_hook_hashes": raw_hook_hashes,

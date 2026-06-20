@@ -144,19 +144,16 @@ def register_recipe_tools(mcp: FastMCP, rpc: RpcClient) -> None:
                     "compile_report": compile_result,
                 }
 
-            # Approved: attempt RPC build
+            # Approved: attempt RPC build via typed client method
             try:
-                rpc_result = rpc.call(
-                    "device_recipe_build",
-                    {
-                        "script": compile_result["script"],
-                        "script_sha256": compile_result["script_sha256"],
-                        "output_fsp": output_fsp,
-                        "object_lifecycle": compile_result["object_lifecycle"],
-                    },
+                rpc_result = rpc.recipe_build(
+                    recipe=recipe,
+                    compile_fingerprint=compile_result["compile_fingerprint"],
+                    output_fsp=output_fsp,
+                    approved=True,
                 )
                 return {
-                    "ok": True,
+                    "ok": rpc_result.get("ok", False),
                     "approved": True,
                     "rpc_result": rpc_result,
                     "compile_report": compile_result,

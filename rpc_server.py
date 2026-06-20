@@ -9,6 +9,7 @@ Run on Windows:
 
 import argparse
 import importlib
+import json
 import logging
 import os
 import sys
@@ -27,6 +28,7 @@ from src.analysis_group_runtime import (
     SessionOperationGate,
 )
 from src.device_recipe import compile_recipe
+from src.fdtd_schema import fingerprint_json
 from src.job_store import JobError, JobStore
 from src.object_library_catalog import (
     ObjectLibraryCatalog,
@@ -1254,21 +1256,57 @@ def create_app(
         with operation_gate.acquire("recipe_build"):
             # 3. Create clean project
             adapter.project_new(
-                name=f"recipe_build_{output_fsp}",
+                name=f"recipe_build_{Path(output_fsp).stem}",
                 discard_unsaved=True,
             )
 
-            # 4. Execute build-only script
+            # 4. Execute base_script (no runtime analysis groups)
             log_lines: list = []
-            script = compiled["script"]
-            eval_result = session.eval(script)
-            log_lines.append(f"Script executed ({len(script)} chars).")
+            base_script = compiled["base_script"]
+            eval_result = session.eval(base_script)
+            log_lines.append(f"Base script executed ({len(base_script)} chars).")
 
-            # 5. Save to output path
+            # 5. Execute runtime analysis group instructions
+            analysis_results = []
+            for instruction in compiled["analysis_group_instructions"]:
+                if analysis_group_service is None:
+                    raise RpcError(
+                        "object_library_enumeration_failed",
+                        "Runtime analysis group selection is unavailable.",
+                        503,
+                    )
+                analysis_results.append(
+                    analysis_group_service.create({
+                        **instruction,
+                        "dry_run": False,
+                    })
+                )
+
+            # 6. Save to output path (only after all instructions succeed)
             save_result = session.save(str(output_fsp))
             log_lines.append(f"Project saved to {save_result.get('saved_to', output_fsp)}.")
 
-            # 6. Gather object list
+            # 7. Build execution fingerprint and manifest
+            execution_data = {
+                "compile_fingerprint": compiled["compile_fingerprint"],
+                "analysis_groups": analysis_results,
+            }
+            execution_fingerprint = fingerprint_json(execution_data)
+            manifest_path = str(output_fsp) + ".build.json"
+            Path(manifest_path).write_text(
+                json.dumps({
+                    "schema_version": "1.0",
+                    "model_path": str(output_fsp),
+                    "compile_fingerprint": compiled["compile_fingerprint"],
+                    "execution_fingerprint": execution_fingerprint,
+                    "analysis_groups": analysis_results,
+                    "physical_conclusion": False,
+                }, indent=2, ensure_ascii=False, sort_keys=True),
+                encoding="utf-8",
+            )
+            log_lines.append(f"Manifest written to {manifest_path}.")
+
+            # 8. Gather object list
             object_list = adapter.object_list()
             log_lines.append(
                 f"Object list: {len(object_list.get('objects', []))} objects."
@@ -1280,6 +1318,9 @@ def create_app(
                 "objects": object_list.get("objects", []),
                 "log": log_lines,
                 "compile_fingerprint": compiled["compile_fingerprint"],
+                "analysis_groups": analysis_results,
+                "execution_fingerprint": execution_fingerprint,
+                "manifest_path": manifest_path,
             }
         )
 

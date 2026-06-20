@@ -589,3 +589,62 @@ def test_analysis_group_route_passes_runtime_selection_fields(
     assert response.status_code == 200
     assert service.body["analysis_intent"]["kind"] == "transmission"
     assert service.body["parameter_overrides"]["x span"] == 2e-6
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Recipe build runtime instruction tests (Task 8)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_recipe_build_executes_runtime_analysis_instructions(
+    server_module, fake_session, tmp_path
+):
+    from src.device_recipe import compile_recipe
+
+    recipe = {
+        **MINIMAL_RECIPE,
+        "outputs": ["T"],
+        "analysis_groups": [{
+            "type": "analysis_group",
+            "name": "power_analysis",
+            "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+            "prefer_builtin": True,
+            "properties": {},
+        }],
+    }
+    compiled = compile_recipe(recipe)
+
+    class FakeService:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, body):
+            self.calls.append(body)
+            return {
+                "name": body["name"],
+                "source": "builtin",
+                "script_id": "power_transmission_box",
+                "parameters": {"applied": {}, "defaults_preserved": {}},
+                "setup_verified": True,
+                "physical_conclusion": False,
+            }
+
+    service = FakeService()
+    output = tmp_path / "device.fsp"
+    app = server_module.create_app(
+        fake_session,
+        analysis_group_service=service,
+    )
+    response = app.test_client().post("/recipes/build", json={
+        "recipe": recipe,
+        "compile_fingerprint": compiled["compile_fingerprint"],
+        "output_fsp": str(output),
+        "approved": True,
+    })
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert len(service.calls) == 1
+    assert payload["analysis_groups"][0]["source"] == "builtin"
+    assert payload["execution_fingerprint"].startswith("sha256:")
+    assert Path(payload["manifest_path"]).is_file()

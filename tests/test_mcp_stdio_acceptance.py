@@ -361,6 +361,11 @@ class TestMcpStdioToolsCall:
         data = _extract_tool_result(result)
         assert data.get("ok") is True, f"Recipe compile failed: {data}"
         assert "script" in data
+        assert "base_script" in data
+        assert data["base_script"] == data["script"]
+        assert "analysis_group_instructions" in data
+        assert "match_policy_version" in data
+        assert data["match_policy_version"] == "1.0"
         assert "compile_fingerprint" in data
 
     # ── generic sweep plan (pure compiler) ──────────────────────────────
