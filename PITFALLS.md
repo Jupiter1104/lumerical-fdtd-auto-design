@@ -206,3 +206,10 @@
 - 根因：smoke 依赖 Lumerical 默认 FDTD 求解参数，没有显式设置低成本 `mesh accuracy`、`simulation time` 和 `auto shutoff min`；同步 run 时间过长时，任何外部 Agent/脚本/人工 close 都会把真实根因淹没成级联会话错误。
 - 修复：minimal smoke 明确设置 `mesh accuracy=1`、`simulation time=50e-15`、`auto shutoff min=1e-3`、source/monitor 坐标和 spans；run timeout 提升到 300 秒；run 失败后立即写报告退出。
 - 预防：manual smoke 运行期间只保留一个控制者连接 RPC，不让其他 Agent/脚本调用 `/session/close`；所有“技术 smoke”都必须显式写入低成本求解参数，不能继承 GUI 默认值。
+
+## 2026-06-20 - 通过的 smoke 现场参数要回写仓库
+
+- 现象：Windows manual smoke 在现场把 `session_start` timeout 调到 30 秒、`simulation_run` timeout 调到 600 秒、RPC 临时改用 5001 后通过；但仓库版本仍可能停留在旧 timeout。
+- 根因：Windows 本机验证常会做小幅现场调整，如果不回写 Mac 主仓库和测试，下一位 Agent `git pull` 后无法复现同一通过条件。
+- 修复：把经过实测的 `30s/600s` 固化到 `minimal_solver_smoke.py` 和静态测试；`5001` 仅作为命令行 `--rpc` workaround，不改默认端口。
+- 预防：每次 Windows manual smoke 通过后，审查报告里的“本次修改”必须逐项对照 git diff；属于通用容差的改入仓库，属于现场绕行的只写入日志。

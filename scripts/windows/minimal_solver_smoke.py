@@ -67,7 +67,7 @@ def main() -> int:
 
     # Step 2: start session
     try:
-        resp = requests.post(f"{rpc_url}/session/start", json={"hide": True}, timeout=15)
+        resp = requests.post(f"{rpc_url}/session/start", json={"hide": True}, timeout=30)
         session = resp.json()
         record_step("session_start", session.get("ok", False), {"api_version": session.get("api_version")})
     except Exception as exc:
@@ -162,7 +162,7 @@ def main() -> int:
     # Step 9: run simulation once
     run_ok = False
     try:
-        resp = requests.post(f"{rpc_url}/simulation/run", json={}, timeout=300)
+        resp = requests.post(f"{rpc_url}/simulation/run", json={}, timeout=600)
         payload = resp.json()
         run_ok = payload.get("ok", False)
         record_step("simulation_run", run_ok, payload)

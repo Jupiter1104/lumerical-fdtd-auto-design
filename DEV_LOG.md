@@ -753,3 +753,11 @@
 - 修改：minimal smoke 显式设置低成本 FDTD 参数（`mesh accuracy=1`、`simulation time=50e-15`、`auto shutoff min=1e-3`），固定 source/monitor 位置和 spans，把 run timeout 提升到 300 秒；若 run 失败，立即落 `smoke_report.json` 并退出，避免级联误报。
 - 验证：静态回归测试先红后绿，`tests/test_minimal_solver_smoke_static.py` 聚焦验证通过。
 - 后续：Windows 端更新到新 HEAD 后，在没有其他 Agent/脚本调用 `/session/close` 的情况下重跑 manual smoke。
+
+## 2026-06-20 - Windows minimal solver smoke 通过
+
+- Windows manual smoke：`technical_smoke=true`、`physical_conclusion=false`、`ok=true`，14/14 步通过。
+- 验证链路：health、session_start、project_new、object_create、fdtd_region、source_create、monitor_create、analysis_group_create、simulation_run、simulation_status、project_save、result_list、result_read_value、result_download。
+- 产物：`smoke_model.fsp`、`smoke_report.json`、`downloaded_results.json`。
+- 现场必要容差：FDTD 冷启动需约 17-20 秒，`session_start` timeout 固化为 30 秒；同步 run 预算固化为 600 秒。端口 `5001` 仅作为 `5000` 被僵尸 TCP 条目锁死时的临时 `--rpc` 参数，不改项目默认端口。
+- 注意：`mon/T` 负值只作为结果读取证据，不构成物理结论。

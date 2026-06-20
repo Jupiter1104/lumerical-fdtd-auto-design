@@ -63,7 +63,13 @@ def test_creates_one_analysis_group():
 def test_runs_once():
     content = _read()
     assert "/simulation/run" in content
-    assert "timeout=300" in content
+    assert '/simulation/run", json={}, timeout=600' in content
+
+
+def test_allows_cold_fdtd_startup():
+    content = _read()
+    assert "/session/start" in content
+    assert '/session/start", json={"hide": True}, timeout=30' in content
 
 
 def test_aborts_after_simulation_run_failure():
