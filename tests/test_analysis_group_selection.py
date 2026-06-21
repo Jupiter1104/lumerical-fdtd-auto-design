@@ -103,6 +103,98 @@ def test_small_gap_does_not_auto_select():
     ]) is None
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Shortlist coverage for all 8 supported intents (P1 fix)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Typical Object Library IDs that SHOULD match each intent.
+# These are illustrative names — the real v242 catalog is the authority.
+TYPICAL_IDS = [
+    "power_transmission_box",
+    "net_power_flow_box",
+    "absorption_monitor",
+    "farfield_projection_box",
+    "polarization_ellipse_box",
+    "effective_mode_area_box",
+    "modal_volume_box",
+    "cw_movie_box",
+]
+
+# A known non-analysis-group ID that must NOT match any intent.
+NEGATIVE_ID = "rounded_cylinder"
+
+
+@pytest.mark.parametrize(
+    ("script_id", "intent_kind"),
+    [
+        ("power_transmission_box", "transmission"),
+        ("net_power_flow_box", "net_power_flow"),
+        ("absorption_monitor", "absorption"),
+        ("farfield_projection_box", "far_field"),
+        ("polarization_ellipse_box", "polarization"),
+        ("effective_mode_area_box", "mode_area"),
+        ("modal_volume_box", "modal_volume"),
+        ("cw_movie_box", "movie"),
+    ],
+)
+def test_typical_id_enters_shortlist_for_its_intent(script_id, intent_kind):
+    """Every supported intent must be able to shortlist at least one typical ID."""
+    catalog = {
+        "script_ids": TYPICAL_IDS + [NEGATIVE_ID],
+        "probes": {},
+    }
+    intent = {"kind": intent_kind, "outputs": []}
+    result = shortlist_candidates(catalog, intent, {}, limit=3)
+    matching = [item["script_id"] for item in result]
+    assert script_id in matching, (
+        f"{script_id!r} must enter the shortlist for intent {intent_kind!r}. "
+        f"Shortlist returned: {matching}"
+    )
+    assert all(item["score"] >= 0.35 for item in result), (
+        f"All shortlist entries must meet or exceed 0.35. "
+        f"Scores: {[(r['script_id'], r['score']) for r in result]}"
+    )
+
+
+def test_shortlist_is_deterministic_for_all_intents():
+    """Shortlist must be deterministic across calls for all intents."""
+    catalog = {"script_ids": TYPICAL_IDS, "probes": {}}
+    for intent_kind in [
+        "transmission", "net_power_flow", "absorption", "far_field",
+        "polarization", "mode_area", "modal_volume", "movie",
+    ]:
+        intent = {"kind": intent_kind, "outputs": []}
+        first = shortlist_candidates(catalog, intent, {}, limit=3)
+        second = shortlist_candidates(catalog, intent, {}, limit=3)
+        assert first == second, f"Shortlist not deterministic for {intent_kind}"
+
+
+def test_negative_id_never_enters_shortlist():
+    """rounded_cylinder must not match any analysis intent."""
+    catalog = {"script_ids": [NEGATIVE_ID, "power_transmission_box"], "probes": {}}
+    for intent_kind in [
+        "transmission", "net_power_flow", "absorption", "far_field",
+        "polarization", "mode_area", "modal_volume", "movie",
+    ]:
+        intent = {"kind": intent_kind, "outputs": []}
+        result = shortlist_candidates(catalog, intent, {}, limit=3)
+        matching = [item["script_id"] for item in result]
+        assert NEGATIVE_ID not in matching, (
+            f"{NEGATIVE_ID!r} must NOT match intent {intent_kind!r}"
+        )
+
+
+def test_farfield_with_underscore_form_also_enters_shortlist():
+    """far_field_projection (underscore form) must also shortlist for far_field."""
+    catalog = {
+        "script_ids": ["far_field_projection_box", NEGATIVE_ID],
+        "probes": {},
+    }
+    intent = {"kind": "far_field", "outputs": []}
+    result = shortlist_candidates(catalog, intent, {}, limit=3)
+    assert result[0]["script_id"] == "far_field_projection_box"
+
+
 from src.analysis_group_selection import (
     AnalysisSelectionError,
     resolve_analysis_parameters,

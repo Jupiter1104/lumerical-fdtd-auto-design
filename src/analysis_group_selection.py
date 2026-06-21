@@ -32,6 +32,24 @@ INTENT_TOKENS = {
     "unknown": set(),
 }
 
+# Core token groups for shortlist matching.
+# Each intent maps to a list of token *sets*.  A script_id enters the
+# shortlist (score 0.45) when its tokens contain ALL tokens of ANY set.
+# This avoids penalising candidates when only a subset of the legacy
+# synonym tokens appear (e.g. "farfield" alone must be enough for
+# far_field without also matching "far", "field", "directivity").
+CORE_TOKEN_GROUPS: dict[str, list[set[str]]] = {
+    "transmission": [{"transmission"}],
+    "net_power_flow": [{"power", "flow"}],
+    "absorption": [{"absorption"}],
+    "far_field": [{"farfield"}, {"far", "field"}],
+    "polarization": [{"polarization"}],
+    "mode_area": [{"mode", "area"}],
+    "modal_volume": [{"modal", "volume"}],
+    "movie": [{"movie"}],
+    "unknown": [],
+}
+
 OUTPUT_INTENTS = {
     "t": "transmission",
     "transmission": "transmission",
@@ -131,14 +149,22 @@ def resolve_analysis_intent(
 
 
 def _base_score(script_id: str, intent: dict) -> tuple[float, list[str]]:
-    wanted = INTENT_TOKENS[intent["kind"]]
-    actual = _tokens(script_id)
-    if not wanted or not (wanted & actual):
+    groups = CORE_TOKEN_GROUPS.get(intent["kind"], [])
+    if not groups:
         return 0.0, []
-    overlap = len(wanted & actual) / len(wanted)
-    return round(0.45 * overlap, 12), [
-        f"id_token:{token}" for token in sorted(wanted & actual)
-    ]
+    actual = _tokens(script_id)
+    # Any core-token group fully contained in the script_id tokens gives the
+    # full shortlist score.  Supporting tokens (from INTENT_TOKENS) are still
+    # collected as match reasons for transparency but do not affect scoring.
+    for group in groups:
+        if group.issubset(actual):
+            return 0.45, [f"id_token:{t}" for t in sorted(group)]
+    # No core group matched — still collect supporting reasons for diagnostics.
+    wanted = INTENT_TOKENS.get(intent["kind"], set())
+    overlap = wanted & actual
+    if overlap:
+        return 0.0, [f"id_token:{t}" for t in sorted(overlap)]
+    return 0.0, []
 
 
 def shortlist_candidates(
