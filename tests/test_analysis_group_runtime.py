@@ -465,7 +465,7 @@ def test_bridge_resolves_backend_that_appears_after_construction():
     # Before fdtd is assigned, calling any lumapi method should raise
     with pytest.raises(AnalysisRuntimeError) as exc:
         bridge.is_layout_mode()
-    assert exc.value.error_type == "analysis_probe_failed"
+    assert exc.value.error_type == "session_not_active"
 
     # Assign the backend after bridge construction
     owner.fdtd = LaterFdtd()
@@ -492,10 +492,20 @@ def test_bridge_handles_owner_without_fdtd_attribute():
     assert bridge.is_layout_mode() is True
 
 
-def test_bridge_raises_session_not_active_when_no_backend():
-    """When owner has no fdtd and owner itself lacks lumapi methods, raise clear error."""
+def test_bridge_raises_analysis_probe_failed_when_backend_lacks_method():
+    """When owner has no fdtd attribute it IS the backend — missing method is probe_failed."""
     owner = type("Owner", (), {})()  # No fdtd, no layoutmode
     bridge = LumapiBridge(owner)
     with pytest.raises(AnalysisRuntimeError) as exc:
         bridge.call("layoutmode")
     assert exc.value.error_type == "analysis_probe_failed"
+
+
+def test_bridge_raises_session_not_active_when_fdtd_is_none():
+    """When owner.fdtd is explicitly None the session is not active."""
+    owner = type("Owner", (), {"fdtd": None})()  # fdtd=None, no methods
+    bridge = LumapiBridge(owner)
+    with pytest.raises(AnalysisRuntimeError) as exc:
+        bridge.call("layoutmode")
+    assert exc.value.error_type == "session_not_active"
+    assert exc.value.status_code == 409

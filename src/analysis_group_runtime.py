@@ -17,6 +17,8 @@ from .analysis_group_selection import (
 )
 from .fdtd_schema import fingerprint_json
 
+_SENTINEL = object()
+
 
 class AnalysisRuntimeError(Exception):
     def __init__(
@@ -65,8 +67,27 @@ class LumapiBridge:
         return getattr(self.owner, "fdtd", None) or self.owner
 
     def call(self, name: str, *args):
-        method = getattr(self.raw, name, None)
+        raw = self.raw
+        method = getattr(raw, name, None)
         if not callable(method):
+            # When the owner carries an explicit ``.fdtd`` that is falsy
+            # (None / not-yet-started) the session is inactive.  When the
+            # owner has no ``.fdtd`` attribute at all we treat the owner
+            # itself as the backend — the backend just lacks this command.
+            fdtd = getattr(self.owner, "fdtd", _SENTINEL)
+            if fdtd is _SENTINEL:
+                # owner IS the backend; missing method is a probe failure
+                raise AnalysisRuntimeError(
+                    "analysis_probe_failed",
+                    f"lumapi command {name} is unavailable.",
+                    500,
+                )
+            if not fdtd:
+                raise AnalysisRuntimeError(
+                    "session_not_active",
+                    "FDTD session is not active — no lumapi backend available.",
+                    409,
+                )
             raise AnalysisRuntimeError(
                 "analysis_probe_failed",
                 f"lumapi command {name} is unavailable.",
