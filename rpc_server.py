@@ -625,9 +625,11 @@ def create_app(
     # Adapter wraps the test backend if given; otherwise wraps the session
     adapter = WindowsFdtdAdapter(backend if backend is not None else session)
 
-    # Build the analysis group service when not injected by tests
+    # Build the analysis group service when not injected by tests.
+    # The production path is ``create_app()`` — no session_manager argument —
+    # so we must use the session's own catalog unconditionally.
     catalog = object_library_catalog
-    if catalog is None and isinstance(session, SessionManager) and session_manager is not None:
+    if catalog is None and isinstance(session, SessionManager):
         catalog = session._object_library_catalog
 
     operation_gate = SessionOperationGate()
@@ -642,6 +644,10 @@ def create_app(
         analysis_group_service = AnalysisGroupService(
             adapter, bridge, catalog, inspector
         )
+
+    # Store for diagnostics so tests and operators can verify the production
+    # assembly without introspecting route closures.
+    app.extensions["analysis_group_service"] = analysis_group_service
 
     def reject_during_sweep() -> None:
         if sweeps.is_running:

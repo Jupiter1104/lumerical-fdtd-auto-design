@@ -75,8 +75,24 @@ def server_module():
 
 
 def test_analysis_group_route_passes_builtin_fields_to_adapter(server_module):
+    """When the analysis_group_service is explicitly None, the route falls
+    back to the adapter, preserving backward compatibility for tests."""
     backend = FakeBackend()
-    app = server_module.create_app(backend=backend)
+
+    class FakeSession:
+        def __init__(self):
+            self.connected = True
+
+        @property
+        def is_connected(self):
+            return self.connected
+
+    fake_session = FakeSession()
+    app = server_module.create_app(
+        session_manager=fake_session,
+        backend=backend,
+        analysis_group_service=None,
+    )
     app.config.update(TESTING=True)
 
     response = app.test_client().post("/analysis-groups", json={

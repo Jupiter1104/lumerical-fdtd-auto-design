@@ -426,7 +426,7 @@ def test_recipe_build_rejects_fingerprint_mismatch(server_module, fake_session):
     assert payload["error"]["type"] == "compile_fingerprint_mismatch"
 
 
-def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session):
+def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session, tmp_path):
     """POST /recipes/build with correct fingerprint + approved saves .fsp."""
     from src.device_recipe import compile_recipe
 
@@ -437,7 +437,7 @@ def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session):
     compile_result = compile_recipe(MINIMAL_RECIPE)
     assert compile_result["ok"] is True
 
-    output_path = "C:\\Users\\me\\device.fsp"
+    output_path = str(tmp_path / "device.fsp")
 
     response = client.post(
         "/recipes/build",
@@ -461,6 +461,11 @@ def test_recipe_build_saves_fsp_on_valid_recipe(server_module, fake_session):
     save_calls = [c for c in fake_session.calls if c[0] == "save"]
     assert len(save_calls) == 1
     assert save_calls[0][1]["file_path"] == output_path
+
+    # Manifest must be written alongside the .fsp, not pollute the repo root.
+    manifest_path = Path(payload["manifest_path"])
+    assert manifest_path.parent == tmp_path
+    assert manifest_path.is_file()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -648,3 +653,93 @@ def test_recipe_build_executes_runtime_analysis_instructions(
     assert payload["analysis_groups"][0]["source"] == "builtin"
     assert payload["execution_fingerprint"].startswith("sha256:")
     assert Path(payload["manifest_path"]).is_file()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Production assembly regression tests (P0 fix)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_production_create_app_assembles_analysis_group_service(server_module):
+    """create_app() with no arguments must assemble AnalysisGroupService.
+
+    The production entry point is ``app = create_app()``.  Without an
+    injected service the /analysis-groups route must NOT fall back to the
+    legacy adapter branch.
+    """
+    app = server_module.create_app()
+    app.config.update(TESTING=True)
+
+    # The Flask app itself stores the service so we can assert it exists.
+    # (The route closure captures the ``analysis_group_service`` variable.)
+    assert app.extensions.get("analysis_group_service") is not None, (
+        "Production create_app() must build an AnalysisGroupService "
+        "and store it in app.extensions for diagnostics."
+    )
+
+
+def test_production_analysis_groups_route_uses_service_not_adapter(
+    server_module, monkeypatch
+):
+    """POST /analysis-groups with prefer_builtin=True must go through the
+    autonomous selection service, not return an old-style adapter dry-run
+    result."""
+    app = server_module.create_app()
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    # Patch the AnalysisGroupService to return a recognisable builtin signal
+    from src.analysis_group_runtime import AnalysisGroupService
+
+    original_create = AnalysisGroupService.create
+
+    def fake_create(self, body):
+        return {
+            "name": body.get("name", ""),
+            "source": "builtin",
+            "script_id": "test_production_wired",
+            "match_confidence": 0.95,
+            "match_reasons": ["test:production_assembly_verified"],
+            "candidates": [],
+            "intent": body.get("analysis_intent", {}),
+            "catalog_identity": "test",
+            "catalog_status": "ready",
+            "probe": {"status": "cached", "restore_verified": True},
+            "probe_schema_fingerprint": "sha256:test",
+            "parameters": {
+                "applied": {},
+                "defaults_preserved": {},
+                "unresolved": [],
+                "verification": {},
+            },
+            "setup_verified": True,
+            "fallback_used": False,
+            "fallback_reason": None,
+            "physical_conclusion": False,
+        }
+
+    monkeypatch.setattr(AnalysisGroupService, "create", fake_create)
+
+    response = client.post("/analysis-groups", json={
+        "name": "test_ag",
+        "properties": {},
+        "analysis_intent": {"kind": "transmission", "outputs": ["T"]},
+        "recipe_context": {"outputs": ["T"]},
+        "prefer_builtin": True,
+        "require_builtin": False,
+        "script_id": "",
+        "dry_run": False,
+    })
+
+    payload = response.get_json()
+    assert response.status_code == 200
+    assert payload["ok"] is True
+    assert payload["source"] == "builtin", (
+        f"Expected builtin from service, got source={payload.get('source')}. "
+        f"The route may have fallen back to the adapter."
+    )
+    assert payload["script_id"] == "test_production_wired"
+    assert "test:production_assembly_verified" in payload.get("match_reasons", [])
+
+    # Restore original
+    monkeypatch.setattr(AnalysisGroupService, "create", original_create)

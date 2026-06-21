@@ -430,3 +430,72 @@ def test_autonomous_builtin_analysis_group_flow(
     assert payload["script_id"] == "power_transmission_box"
     assert payload["parameters"]["verification"]["x span"]["matched"] is True
     assert backend.runsetup_calls == ["power_analysis"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LumapiBridge dynamic backend resolution (P0 fix)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class LaterFdtd:
+    """A backend that only appears after the bridge is constructed."""
+
+    def layoutmode(self):
+        return 1
+
+    def ls(self):
+        return []
+
+
+class SecondFdtd:
+    """A different backend to test replacement."""
+
+    def layoutmode(self):
+        return 0  # Different return to prove we are calling the new one
+
+    def ls(self):
+        return []
+
+
+def test_bridge_resolves_backend_that_appears_after_construction():
+    """Bridge created when owner.fdtd=None must use the backend after it is assigned."""
+    owner = type("Owner", (), {"fdtd": None})()
+    bridge = LumapiBridge(owner)
+
+    # Before fdtd is assigned, calling any lumapi method should raise
+    with pytest.raises(AnalysisRuntimeError) as exc:
+        bridge.is_layout_mode()
+    assert exc.value.error_type == "analysis_probe_failed"
+
+    # Assign the backend after bridge construction
+    owner.fdtd = LaterFdtd()
+
+    # Now the bridge must dynamically resolve to the new backend
+    assert bridge.is_layout_mode() is True
+
+
+def test_bridge_resolves_backend_that_is_replaced():
+    """When owner.fdtd is replaced, the bridge must use the replacement."""
+    owner = type("Owner", (), {"fdtd": LaterFdtd()})()
+    bridge = LumapiBridge(owner)
+    assert bridge.is_layout_mode() is True
+
+    # Replace with a different backend
+    owner.fdtd = SecondFdtd()
+    assert bridge.is_layout_mode() is False  # SecondFdtd.layoutmode returns 0
+
+
+def test_bridge_handles_owner_without_fdtd_attribute():
+    """Bridge wraps an owner that has NO fdtd attribute (raw adapter/backend directly)."""
+    backend = LaterFdtd()
+    bridge = LumapiBridge(backend)
+    assert bridge.is_layout_mode() is True
+
+
+def test_bridge_raises_session_not_active_when_no_backend():
+    """When owner has no fdtd and owner itself lacks lumapi methods, raise clear error."""
+    owner = type("Owner", (), {})()  # No fdtd, no layoutmode
+    bridge = LumapiBridge(owner)
+    with pytest.raises(AnalysisRuntimeError) as exc:
+        bridge.call("layoutmode")
+    assert exc.value.error_type == "analysis_probe_failed"

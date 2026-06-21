@@ -57,7 +57,12 @@ class SessionOperationGate:
 class LumapiBridge:
     def __init__(self, session_or_backend: Any):
         self.owner = session_or_backend
-        self.raw = getattr(session_or_backend, "fdtd", None) or session_or_backend
+
+    @property
+    def raw(self):
+        """Dynamically resolve the backend so that a SessionManager that
+        acquires ``.fdtd`` after bridge construction is visible."""
+        return getattr(self.owner, "fdtd", None) or self.owner
 
     def call(self, name: str, *args):
         method = getattr(self.raw, name, None)
